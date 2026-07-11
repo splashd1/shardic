@@ -2,6 +2,29 @@
 
 Two CLI programs, a GUI, and shared library modules.
 
+This tool gives an operator the ability to encrypt data such that
+exposure is entrusted to a defined pool of T trustees, requiring a
+minimum subset of D of them to actively agree — each by supplying
+their individual codeword — before the plaintext can be recovered.
+No single party, including whoever created the vault, can decrypt it
+alone; any group smaller than D learns nothing about the data even if
+they pool what they have (see "How the design works" below).
+
+**Example: break-glass access to critical infrastructure.** A company
+locks a root CA private key, a production database master key, or a
+SCADA override credential in a vault with, say, `T=7` trustees (a mix
+of senior engineers, security officers, and an executive) and a
+`D=4` threshold. Day to day, nobody has access to the key at all — it
+only gets reconstructed for a genuine emergency (an incident, an
+outage, an urgent access-revocation). When that happens, no single
+person, including whoever's holding the `.krypt` file, can unlock it
+unilaterally: four of the seven trustees each have to independently
+choose to supply their codeword. That gives the organization a
+credential that's recoverable under real emergency conditions while
+staying resistant to misuse by any one insider or one compromised
+account — with a built-in record of exactly which trustees
+participated in each recovery.
+
 ## Files
 - `vault_create.py` — CLI Program 1: archive → encrypt → split into trustee codewords → single `.krypt` file
 - `vault_recover.py` — CLI Program 2: recover DEK from D codewords → decrypt → extract
