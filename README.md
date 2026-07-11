@@ -29,18 +29,20 @@ participated in each recovery.
 splits access to a password manager's master vault among five
 relatives (`T=5`, `D=3`) — but unlike the infrastructure case above,
 each trustee needs to actually *memorize* their codeword rather than
-store a file; nobody wants it written on a sticky note. Passing a
-standard diceware wordlist (e.g. the EFF long wordlist) with
-`--dictionary eff_wordlist.txt --word-count 5` builds each codeword
-out of real, pronounceable words instead of synthetic strings — the
-classic diceware approach, much easier to commit to memory and recall
+store a file; nobody wants it written on a sticky note. Passing the
+bundled EFF long wordlist (`wordlists/eff_large_wordlist.txt` — see
+below) with `--dictionary wordlists/eff_large_wordlist.txt
+--word-length 8 --word-count 5` builds each codeword out of real,
+pronounceable words instead of synthetic strings — the classic
+diceware approach, much easier to commit to memory and recall
 correctly than an equivalent-strength random string. Since
 `load_dictionary()` only pulls words of exactly `--word-length`
-characters, pick a length close to the wordlist's average word length
-so the usable candidate pool (and therefore entropy) stays large; a
-real wordlist carries fewer bits per word than the synthetic
-generator, which is exactly why word count matters more here — see
-"Entropy of the codewords" below.
+characters, pick a length with good coverage in the list (8 characters
+has the most candidates, ~1,780, of any length in this wordlist) so
+the usable pool — and therefore entropy — stays large; a real
+wordlist carries fewer bits per word than the synthetic generator,
+which is exactly why word count matters more here — see "Entropy of
+the codewords" below.
 
 ## Files
 - `vault_create.py` — CLI Program 1: archive → encrypt → split into trustee codewords → single `.krypt` file
@@ -51,6 +53,16 @@ generator, which is exactly why word count matters more here — see
 - `wordgen.py` — shared library: codeword generation (synthetic or dictionary-based)
 - `kdf.py` — shared library: key derivation (PBKDF2 or Argon2id), self-describing via metadata
 - `krypt_container.py` — shared library: the single-file `.krypt` container format
+- `wordlists/eff_large_wordlist.txt` — the EFF long wordlist (7,776
+  words, one per line), for `--dictionary`-based diceware-style
+  codewords; see "Example: diceware-style memorable codewords" above.
+  Published by the Electronic Frontier Foundation
+  (<https://www.eff.org/dice>) under CC BY 3.0 US; reformatted here
+  from EFF's original tab-separated `<dice-roll>\t<word>` file to one
+  word per line, since that's the format `wordgen.load_dictionary()`
+  expects. A handful of entries with punctuation (`drop-down`,
+  `felt-tip`, `t-shirt`, `yo-yo`) get silently excluded by
+  `load_dictionary()`'s `isalpha()` filter — expected, negligible.
 - `build_appimage.sh` — builds standalone Linux binaries + `.AppImage` packages (CLI and GUI)
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
 - `build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI
