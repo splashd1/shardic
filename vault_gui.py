@@ -131,6 +131,14 @@ class CreateTab(ttk.Frame):
         ).grid(row=r, column=1, sticky="w"),
             help_text="More words = more entropy. 2+ recommended.")
 
+        self.strong_words_var = tk.BooleanVar(value=False)
+        add_row("Strong words", lambda r: ttk.Checkbutton(
+            self, variable=self.strong_words_var
+        ).grid(row=r, column=1, sticky="w"),
+            help_text="Randomizes letter case and appends a 3-digit suffix to each word for "
+                       "more entropy at the same length. Only use this if codewords will be "
+                       "typed/pasted rather than read aloud or handwritten.")
+
         # Dictionary (optional)
         dict_frame = ttk.Frame(self)
         self.dict_entry = ttk.Entry(dict_frame)
@@ -216,6 +224,7 @@ class CreateTab(ttk.Frame):
         except (tk.TclError, ValueError):
             messagebox.showerror(APP_TITLE, "Trustees, threshold, word length, and word count must be numbers.")
             return
+        strong_words = bool(self.strong_words_var.get())
 
         if threshold > trustees:
             messagebox.showerror(APP_TITLE, "Threshold (D) cannot exceed total trustees (T).")
@@ -280,6 +289,8 @@ class CreateTab(ttk.Frame):
                     outdir=outdir,
                     kdf_method=kdf_method,
                     kdf_params=kdf_params,
+                    randomize_case=strong_words,
+                    digit_suffix_len=3 if strong_words else 0,
                     log=self._log_writer,
                 )
                 self._log_writer(f"Wrote {len(result['trustee_files'])} trustee codeword files to: {result['words_dir']}")
