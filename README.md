@@ -89,6 +89,34 @@ automatically (and still understands older split-file vaults — see below).
 --argon2-parallelism N           # default 4
 ```
 
+### Stronger codewords (`--strong-words`)
+
+```
+python3 vault_create.py --input ./my_directory \
+    --trustees 5 --threshold 3 \
+    --word-length 8 --word-count 2 --strong-words \
+    --outdir vault_out
+```
+Opt-in, off by default. Randomizes the case of each generated letter
+and appends a 3-digit suffix to every word, e.g. `bAfOgE472` instead
+of `bafoge`. Same length/word-count settings, meaningfully more
+entropy:
+- Randomized case doubles the alphabet at every letter position — +1
+  bit/char for free, no extra length.
+- The digit suffix adds ~3.32 bits/char, which is denser than the
+  vowel slots in the plain alternating-consonant-vowel scheme (the
+  actual entropy bottleneck — see "Entropy of the codewords" below).
+
+Only turn this on if codewords will be typed or copy-pasted rather
+than read aloud or handwritten — case is the first thing lost in
+dictation or sloppy transcription. It's purely a generation-time
+choice (recovery just tries whatever string a trustee enters against
+each share's KDF+AES-GCM check), so it doesn't touch the `.krypt`
+format and can't break compatibility with codewords generated before
+this flag existed. Both `vault_create.py` and the GUI log/record an
+estimated combinatorial-entropy figure (in bits) for the codewords
+they generate, with or without `--strong-words`.
+
 ## GUI
 
 ```
@@ -96,10 +124,12 @@ python3 vault_gui.py
 ```
 Two tabs:
 - **Create Vault** — pick a file/folder, fill in trustee count,
-  threshold, codeword length/count, output folder, and a KDF option
-  (Auto / Argon2id / PBKDF2), then click Create. Progress and log
-  output stream into the window; a completion dialog shows where the
-  `.krypt` file and trustee codeword files landed.
+  threshold, codeword length/count, a "Strong words" checkbox (see
+  `--strong-words` above), output folder, and a KDF option (Auto /
+  Argon2id / PBKDF2), then click Create. Progress and log output
+  stream into the window, including an estimated codeword-entropy
+  figure; a completion dialog shows where the `.krypt` file and
+  trustee codeword files landed.
 - **Recover Vault** — pick the `.krypt` file and click "Load Vault
   Info" to see how many codewords are needed; that many password-style
   entry fields appear automatically. Fill in the codewords, pick an
@@ -235,7 +265,13 @@ going forward.
   each extra word roughly multiplies the search space, so 2–3 words
   gets you into a realistic security range. Treat `--word-length`
   as "how long/typeable is each word" and `--word-count` as "how much
-  entropy do I actually want."
+  entropy do I actually want." `--strong-words` (see above) raises the
+  bits-per-character of each word without adding length, if codewords
+  will be typed/pasted rather than spoken or handwritten. Note that
+  because each share is cracked independently (see "Indexing without
+  a mapping table" above), a higher threshold `D` does *not* let you
+  get away with weaker codewords — every codeword individually needs
+  to carry real entropy, regardless of `T`.
 - **Argon2id vs. PBKDF2**: Argon2id's memory-hardness is what raises
   the cost of an attacker running many parallel guesses on GPUs/ASICs
   against a leaked `.krypt` file — PBKDF2 is cheap to parallelize by
