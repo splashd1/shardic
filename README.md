@@ -69,7 +69,7 @@ government and business scenarios.
   `load_dictionary()`'s `isalpha()` filter — expected, negligible.
 - `build_appimage.sh` — builds standalone Linux binaries + `.AppImage` packages (CLI and GUI)
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
-- `build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI
+- `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
 
 ## Requirements (running from source)
 ```
@@ -254,15 +254,32 @@ Windows build script uses the identical PyInstaller invocations, but I
 have no Windows machine here to run it on, so it's untested by me —
 flag anything odd if it comes up.)
 
-### Don't have a Windows machine? Use GitHub Actions (`build.yml`)
+### Don't have a Windows machine? Use GitHub Actions (`.github/workflows/build.yml`)
 
-This repo-ready workflow builds both Windows and Linux executables on
-GitHub's own runners — a real Windows `.exe`, built on real Windows,
-without you needing to own one. Put the `.py` files, `build_appimage.sh`,
-and this workflow in a GitHub repo at `.github/workflows/build.yml`,
-push, then check the **Actions** tab for a run; downloadable artifacts
-(`VaultTool-windows-x64`, `VaultTool-linux-x64`) appear on the run's
-summary page once it finishes.
+This workflow is already wired up in this repo and builds both Windows
+and Linux executables on GitHub's own runners — a real Windows `.exe`,
+built on real Windows, without you needing to own one. Every push to
+`main` builds fresh binaries and uploads them as downloadable,
+workflow-run artifacts (`VaultTool-windows-x64`, `VaultTool-linux-x64`)
+on that run's **Actions** summary page — but those expire and aren't
+versioned.
+
+**To publish a proper Release** (all four binaries — both `.exe`s and
+both AppImages — attached to a permanent, versioned download page),
+push a tag matching `v*`:
+```
+git tag v1.0.0
+git push --tags
+```
+That triggers the same Windows/Linux builds, then a `release` job
+downloads their outputs and runs `gh release create` to publish them
+as a GitHub Release named after the tag, with auto-generated release
+notes from the commits since the previous tag. Ordinary pushes to
+`main` (no new tag) never create a Release — only tag pushes do.
+
+To use this workflow in a *different* repo from scratch, put the
+`.py` files, `build_appimage.sh`, and this file at
+`.github/workflows/build.yml`, then push.
 
 ## Legacy split-file vaults
 
