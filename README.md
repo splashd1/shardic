@@ -44,6 +44,10 @@ wordlist carries fewer bits per word than the synthetic generator,
 which is exactly why word count matters more here — see "Entropy of
 the codewords" below.
 
+These two are just illustrations — see [Other potential use
+cases](#other-potential-use-cases) below for a broader list spanning
+government and business scenarios.
+
 ## Files
 - `vault_create.py` — CLI Program 1: archive → encrypt → split into trustee codewords → single `.krypt` file
 - `vault_recover.py` — CLI Program 2: recover DEK from D codewords → decrypt → extract
@@ -347,3 +351,54 @@ going forward.
   ciphertext size doesn't vary with plaintext compressibility any
   more than necessary; switch to `"w:gz"` in `make_archive()` if you
   want compression and don't mind that leak.
+
+## Other potential use cases
+
+Beyond the two worked examples above, threshold-recoverable encryption
+generally fits situations where a policy or legal requirement says "no
+single party should be able to unilaterally decrypt this," and access
+is rare/high-stakes rather than continuous.
+
+**Government**
+- **Two-person-rule systems, generalized to N-of-M** — e.g. "any 3 of
+  7 officials," which tolerates absence/incapacitation without
+  weakening the no-lone-actor requirement of the classic two-key model.
+- **Escrowed decryption keys for classified/lawful-intercept archives**,
+  split across officials from different branches/agencies so no single
+  agency — or a rogue insider within one — can unilaterally decrypt.
+- **Continuity-of-government credentials** that must survive the loss
+  of some custodians but still require majority agreement to invoke.
+- **Election-system key management** — tabulation-system decryption
+  keys split among representatives of multiple parties/observers.
+- **Diplomatic/intelligence material** where the "no mapping table"
+  property matters most: seizing several codewords in one raid still
+  reveals nothing about who holds the rest.
+
+**Business**
+- **M&A / escrow and dispute-resolution vaults** — deal terms or
+  sensitive documents split among board members, outside counsel, and
+  an escrow agent, released only by quorum.
+- **Cryptocurrency/treasury cold storage** — an offline way to split
+  the root key material behind a multisig wallet among founders/board,
+  so no single executive can move funds alone.
+- **"Break-glass" access to root credentials** — CA keys, database
+  master keys, infrastructure override codes — day-to-day access
+  requires zero people, emergency access requires several specific
+  people to jointly agree, with an audit trail per trustee.
+- **Whistleblower/source-protection archives** for journalism or legal
+  teams, releasable only if a threshold of editors/lawyers agree.
+- **Estate planning / key-person risk** — a founder's critical
+  passwords or IP split among heirs, a lawyer, and a business partner.
+- **Regulated data with separation-of-duties requirements** (SOX,
+  HIPAA "minimum necessary" contexts) — a technical enforcement of an
+  existing compliance control rather than just a policy on paper.
+
+**Where this tool fits best:** rare, high-stakes, offline "break
+glass" access with a small (tens, not thousands), semi-static trustee
+set, where the vault file itself needs to be safely storable/shareable
+with zero metadata leakage about who holds what. It's a poor fit for
+frequent/live authorization, revoking a single trustee without a full
+re-split, or online multi-party protocols — that's the domain of
+proper threshold-signature schemes (e.g. FROST) or HSM-backed
+multisig, which support key rotation and live quorum that this
+static, split-once design doesn't.
