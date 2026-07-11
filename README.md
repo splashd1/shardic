@@ -25,6 +25,23 @@ staying resistant to misuse by any one insider or one compromised
 account — with a built-in record of exactly which trustees
 participated in each recovery.
 
+**Example: diceware-style memorable codewords.** A family estate plan
+splits access to a password manager's master vault among five
+relatives (`T=5`, `D=3`) — but unlike the infrastructure case above,
+each trustee needs to actually *memorize* their codeword rather than
+store a file; nobody wants it written on a sticky note. Passing a
+standard diceware wordlist (e.g. the EFF long wordlist) with
+`--dictionary eff_wordlist.txt --word-count 5` builds each codeword
+out of real, pronounceable words instead of synthetic strings — the
+classic diceware approach, much easier to commit to memory and recall
+correctly than an equivalent-strength random string. Since
+`load_dictionary()` only pulls words of exactly `--word-length`
+characters, pick a length close to the wordlist's average word length
+so the usable candidate pool (and therefore entropy) stays large; a
+real wordlist carries fewer bits per word than the synthetic
+generator, which is exactly why word count matters more here — see
+"Entropy of the codewords" below.
+
 ## Files
 - `vault_create.py` — CLI Program 1: archive → encrypt → split into trustee codewords → single `.krypt` file
 - `vault_recover.py` — CLI Program 2: recover DEK from D codewords → decrypt → extract
