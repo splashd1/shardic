@@ -231,7 +231,7 @@ def match_codewords(codewords: list[str], metadata: dict) -> tuple[list, list[in
     share_records = metadata["shares"]
 
     recovered = []
-    used_indices = set()
+    used_indices: set[int] = set()
     unmatched_positions = []
 
     for pos, word in enumerate(codewords):
