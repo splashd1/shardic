@@ -27,7 +27,7 @@ implementation of the actual crypto.
 Usage:
   python3 vault_create.py --input PATH --trustees T --threshold D \
       --word-length N [--word-count K] [--dictionary FILE] \
-      [--outdir DIR] [--kdf {argon2id,pbkdf2}]
+      [--outdir DIR] [--kdf {argon2id,pbkdf2}] [--strong-words]
 """
 
 import argparse
@@ -54,6 +54,11 @@ def main():
     ap.add_argument("--word-length", "-N", type=int, required=True, help="Character length of each codeword")
     ap.add_argument("--word-count", type=int, default=1, help="Words per trustee codeword phrase (default 1; use >1 for real entropy margin)")
     ap.add_argument("--dictionary", default=None, help="Optional wordlist file (one word per line). Falls back to synthetic pronounceable words if omitted.")
+    ap.add_argument("--strong-words", action="store_true",
+                     help="Opt-in higher-entropy codewords: randomize letter case and append a "
+                          "3-digit suffix to each word. Same length/count settings, more bits. "
+                          "Only worth it if codewords will be typed/pasted rather than read aloud "
+                          "or handwritten (case is easy to lose in transcription).")
     ap.add_argument("--outdir", default=None, help="Output directory (default: ./vault_<timestamp>)")
     ap.add_argument("--kdf", choices=list(kdfmod.METHODS), default=None,
                      help="KDF for share protection. Default: argon2id if argon2-cffi is installed, else pbkdf2.")
@@ -120,6 +125,8 @@ def main():
             outdir=args.outdir,
             kdf_method=kdf_method,
             kdf_params=kdf_params,
+            randomize_case=args.strong_words,
+            digit_suffix_len=3 if args.strong_words else 0,
             log=lambda msg: print(f"[*] {msg}"),
         )
     except (ValueError, vault_core.VaultError) as e:

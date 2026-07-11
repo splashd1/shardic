@@ -23,7 +23,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from gf256_sss import split_secret, reconstruct_secret
-from wordgen import load_dictionary, pick_words
+from wordgen import estimate_word_entropy_bits, load_dictionary, pick_words
 import kdf as kdfmod
 import krypt_container
 
@@ -72,6 +72,8 @@ def create_vault(
     outdir: str | None = None,
     kdf_method: str = "pbkdf2",
     kdf_params: dict | None = None,
+    randomize_case: bool = False,
+    digit_suffix_len: int = 0,
     log=_noop_log,
 ) -> dict:
     """
@@ -84,7 +86,11 @@ def create_vault(
     time (including any "argon2 unavailable, fall back?" confirmation)
     -- this function just uses whatever it's given.
 
-    Returns: {"krypt_path": str, "words_dir": str, "trustee_files": [str, ...], "outdir": str}
+    randomize_case/digit_suffix_len are the opt-in stronger-codeword
+    mode (see wordgen.py's module docstring) -- both default off.
+
+    Returns: {"krypt_path": str, "words_dir": str, "trustee_files": [str, ...],
+    "outdir": str, "estimated_word_entropy_bits": float}
     """
     if threshold > trustees:
         raise ValueError("threshold (D) cannot exceed trustees (T)")
@@ -110,6 +116,27 @@ def create_vault(
     else:
         log("No dictionary supplied; using synthetic pronounceable words.")
 
+    entropy_bits = estimate_word_entropy_bits(
+        word_length,
+        word_count,
+        dictionary_size=len(dictionary_words) if dictionary_words else None,
+        randomize_case=randomize_case,
+        digit_suffix_len=digit_suffix_len,
+    )
+    style_bits = []
+    if randomize_case:
+        style_bits.append("mixed case")
+    if digit_suffix_len:
+        style_bits.append(f"+{digit_suffix_len} digit suffix")
+    style = f" ({', '.join(style_bits)})" if style_bits else ""
+    log(
+        f"Estimated codeword strength: ~{entropy_bits:.0f} bits combinatorial per "
+        f"trustee{style} (before any KDF stretching). Recovery cracks each "
+        f"codeword independently, so this per-codeword number -- not a "
+        f"{trustees}-trustee total -- is the real security margin; raising "
+        f"threshold/trustee counts does not substitute for it."
+    )
+
     with tempfile.TemporaryDirectory() as tmp:
         tar_path = os.path.join(tmp, "archive.tar")
         log(f"Archiving '{input_path}' ...")
@@ -127,7 +154,13 @@ def create_vault(
     share_records = []
     trustee_files = []
     for i, (x, y) in enumerate(shares, start=1):
-        codeword = pick_words(word_length, word_count, dictionary_words)
+        codeword = pick_words(
+            word_length,
+            word_count,
+            dictionary_words,
+            randomize_case=randomize_case,
+            digit_suffix_len=digit_suffix_len,
+        )
         salt = secrets.token_bytes(SALT_LEN)
         share_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
         share_nonce = secrets.token_bytes(NONCE_LEN)
@@ -156,6 +189,8 @@ def create_vault(
         "threshold": threshold,
         "word_length": word_length,
         "word_count": word_count,
+        "randomize_case": randomize_case,
+        "digit_suffix_len": digit_suffix_len,
         "kdf": kdf_method,
         "kdf_params": kdf_params,
         "salt_len": SALT_LEN,
@@ -172,6 +207,7 @@ def create_vault(
         "words_dir": words_dir,
         "trustee_files": trustee_files,
         "outdir": os.path.abspath(outdir),
+        "estimated_word_entropy_bits": entropy_bits,
     }
 
 
