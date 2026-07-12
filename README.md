@@ -77,6 +77,7 @@ government and business scenarios.
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
 - `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
 - `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. Available both as CLI scripts and as a "Shardic-Prime" tab (with its own Create/Recover sub-tabs) in `vault_gui.py`.
+- `docs/pubkey-envelope-plugin.md` — **shardic-envelope**, a design proposal (not yet implemented) for a bolt-on plugin that wraps each trustee's codeword under their own public key, trading memorability for arbitrarily larger/higher-entropy codewords protected by a keypair instead of memory.
 
 ## Requirements (running from source)
 ```
@@ -517,11 +518,13 @@ is rare/high-stakes rather than continuous.
   an escrow agent, released only by quorum.
 - **Cryptocurrency/treasury cold storage** — an offline way to split
   the root key material behind a multisig wallet among founders/board,
-  so no single executive can move funds alone.
+  so no single executive can move funds alone (trustees here often
+  already custody a hardware key or keypair — see `docs/pubkey-envelope-plugin.md`, proposed).
 - **"Break-glass" access to root credentials** — CA keys, database
   master keys, infrastructure override codes — day-to-day access
   requires zero people, emergency access requires several specific
-  people to jointly agree, with an audit trail per trustee.
+  people to jointly agree, with an audit trail per trustee (a strong
+  fit for existing keypairs too — see `docs/pubkey-envelope-plugin.md`, proposed).
 - **Whistleblower/source-protection archives** for journalism or legal
   teams, releasable only if a threshold of editors/lawyers agree.
 - **Estate planning / key-person risk** — a founder's critical
