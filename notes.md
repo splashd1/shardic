@@ -1,3 +1,54 @@
+# Session notes — 2026-07-11 (later)
+
+## What happened
+
+Two things, continuing from the CI-activation work earlier today:
+
+1. **Verified the CI/release pipeline actually works end-to-end.**
+   Checked `gh run list` / `gh release list` and found both the
+   `main`-push build and the `v1.0.0` tag-triggered release had
+   already run successfully — all 8 assets (both `.exe`s, both Linux
+   binaries, both AppImages) are attached to the `v1.0.0` GitHub
+   Release. This closes out the "verify first live CI run" follow-up
+   from the earlier entry below — it's done, not just activated.
+2. **Built cross-machine session sync** (commit `fd85baf`):
+   - `.claude/hooks/session-start-sync.sh` + a `SessionStart` hook in
+     `.claude/settings.json`: on every session start, pulls the repo
+     (`git pull --ff-only`, fails silently if it can't fast-forward)
+     and surfaces this file's contents as context automatically.
+   - `.claude/skills/shardic-sync/SKILL.md`: a manual `/shardic-sync`
+     skill to run before ending a session — summarizes the session
+     into a new dated entry here (newest on top), then auto-commits
+     and pushes `notes.md` (no confirmation needed, per explicit
+     user instruction when this was set up).
+   - Found `.gitignore` blanket-ignored all of `.claude/`, which would
+     have silently kept any of this from ever syncing. Narrowed it to
+     just `.claude/settings.local.json`.
+
+## State at end of session
+
+- New skill isn't registered in *this* running session yet (the
+  `.claude/skills/` directory didn't exist when this session started,
+  so Claude Code's file watcher hasn't picked it up) — confirmed by
+  `Skill(shardic-sync)` returning "Unknown skill". This very notes.md
+  entry was written by manually following the SKILL.md steps instead,
+  as an end-to-end logic test. Open `/hooks` or start a fresh session
+  to get the skill and hook registered for real.
+- Everything above is already committed and pushed (`fd85baf`); this
+  entry itself will be committed/pushed as the last step of that
+  manual test run.
+
+## Possibly worth following up
+
+- Once a fresh session picks up the skill, confirm `/shardic-sync`
+  actually resolves as a slash command (this session could only prove
+  the underlying logic, not the registration).
+- `build_windows.bat` and the Windows side of the CI job remain
+  unverified by a human on real Windows; the GitHub Actions
+  `windows-latest` runner is the first real exercise of that path.
+
+---
+
 # Session notes — 2026-07-11
 
 ## What happened
