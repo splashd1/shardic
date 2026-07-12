@@ -1,3 +1,67 @@
+# Session notes — 2026-07-12 (build verification + --memorable)
+
+## What happened
+
+Two things this session, continuing from shardic-prime work below:
+
+1. **Built and verified the AppImage + Windows exe for real**, to
+   actually test the Shardic-Prime GUI tab rather than just the raw
+   `.py` source. Linux AppImage built locally (`build_appimage.sh`);
+   Windows `.exe` built via a real `windows-latest` GitHub Actions
+   runner, triggered with `gh workflow run build.yml` (no new
+   commit/tag needed — `workflow_dispatch` is wired up). Confirmed via
+   `strings` (after extracting the AppImage's squashfs) that the
+   shardic-prime GUI classes are actually bundled into both packaged
+   binaries, not just present in source. Artifacts landed in `dist/`
+   (untracked, left alone per explicit user instruction — not meant to
+   be committed). Also found and removed a stray `vault_20260712T042010Z/`
+   test vault that appeared at the repo root while the AppImage was
+   open on the user's real screen (`DISPLAY=:0`) — looked like the
+   user testing "Create Vault" live with default settings; removed at
+   their request. Committed the incidental `chmod +x` on
+   `build_appimage.sh` separately (`bfcd5f4`) since the user said to
+   allow that mode change.
+
+2. **Added `--memorable` codeword mode and made it the new default**
+   (commit `9124820`), following a design discussion: whole, real
+   dictionary words (bundled EFF wordlist, embedded as a Python tuple
+   in the new `eff_wordlist_words.py` rather than read from the `.txt`
+   at runtime — necessary so it actually works in the frozen
+   `.exe`/AppImage builds, since PyInstaller onefile doesn't bundle
+   loose data files) instead of synthetic pronounceable syllables.
+   Omitting `--word-length` (previously a hard argparse error) now
+   triggers memorable mode by default in both `vault_create.py` and
+   `vault_create_prime.py`, via a shared `vault_core.resolve_word_mode()`
+   helper; passing `--word-length` still gets the exact old behavior
+   (full backward compat). `--memorable` and `--strong-words` are
+   mutually exclusive (opposite goals). Added a matching "Memorable
+   codewords" checkbox (checked by default) to both GUI Create tabs,
+   with live mutual-exclusion against Strong Words and the
+   now-irrelevant codeword-length field. Verified via full CLI
+   create→recover round trips (memorable default, explicit
+   `--word-length` regression, the conflict error, shardic-prime
+   variant) and by driving the actual GUI widget handlers under a real
+   Tk mainloop.
+
+## State at end of session
+
+- Working tree clean; `9124820` (and `bfcd5f4` before it) pushed to
+  `origin/main`.
+- `dist/` (local AppImage + Windows exe build output) is untracked and
+  intentionally left that way.
+
+## Possibly worth following up
+
+- Still no automated test suite for any of this (base scheme,
+  shardic-prime, memorable mode) — all verification has been manual/
+  scripted-ad-hoc in-session across several sessions now. Worth a real
+  test suite if this keeps growing.
+- The Windows `.exe` has only been smoke-tested via CI build success +
+  `strings` bundling checks, never actually run by a human on real
+  Windows.
+
+---
+
 # Session notes — 2026-07-11 (shardic-prime GUI)
 
 ## What happened
