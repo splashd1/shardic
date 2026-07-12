@@ -58,11 +58,52 @@ Stay disciplined about this going forward — hand the user the `!
 git config ...` command rather than running config changes myself,
 even when they've supplied the values.
 
+Continued the same session with three more pieces of follow-up work:
+
+5. **README pointer + use-case evaluation.** Added a `docs/`-list entry
+   for the design doc, then evaluated (on request) whether
+   shardic-envelope changes any of the README's use-case framing. Verdict:
+   nothing becomes false, but it's a strong fit for use cases where
+   trustees already plausibly hold a keypair (break-glass infra,
+   treasury/multisig cold storage, escrowed lawful-intercept/PKI-backed
+   roles) and a poor fit for the diceware family-estate example
+   (trades "memorize a phrase" for "manage a private key," harder for
+   non-technical trustees). Added parentheticals pointing to the doc
+   on the `Cryptocurrency/treasury cold storage` and `"Break-glass"
+   access to root credentials` bullets only — left the diceware example
+   and the closing "Where this tool fits best" paragraph untouched, and
+   explicitly did not overclaim that the proposal solves per-trustee
+   key rotation (it doesn't — still an open TBD in the doc). Committed
+   and pushed as `bb01442`.
+
+6. **Commit attribution trailer customized.** User didn't want the
+   default `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
+   trailer; found `attribution.commit`/`attribution.pr` in the
+   settings.json schema (freeform text, not just an on/off toggle) and
+   set both, globally, in `~/.claude/settings.json` to `"Fine-tuned,
+   vetted, and, in some cases, supplemented by Claude Sonnet 5"`. This
+   applies going forward to all repos, not just shardic.
+
+7. **Amended + force-pushed the last two commits** to carry the new
+   trailer instead of the old one, since the user asked for it applied
+   retroactively too. Since both were already on `origin/main`, this
+   meant rewriting published history: rebuilt them via a temp branch +
+   cherry-pick (confirmed empty diff against the old tip before
+   switching), got explicit user confirmation before the
+   force-push step specifically, then `git push --force-with-lease`.
+   New hashes: `471f403` ("Add session notes: shardic-envelope design
+   doc") and `b90c10e` ("Point README at shardic-envelope design doc"),
+   replacing the old `44e74f8`/`bb01442` — file contents unchanged,
+   only the commit message trailer differs.
+
 ## State at end of session
 
-- `docs/pubkey-envelope-plugin.md` committed and pushed to
-  `origin/main` at `3ca6228`.
-- No uncommitted changes; working tree clean.
+- `origin/main` tip is `b90c10e`; working tree clean, no uncommitted
+  changes.
+- `~/.claude/settings.json` now sets `attribution.commit`/`attribution.pr`
+  globally — any future commit/PR from Claude Code (any repo) will
+  carry that wording instead of `Co-Authored-By`, unless overridden by
+  a more specific settings file.
 - The `resolve_kdf()`/`peek_metadata()` cross-scheme-rejection fix
   mentioned as uncommitted in the previous entry — check: it's already
   landed as `3fb9368` ("Reject shardic-prime vaults in
@@ -76,6 +117,13 @@ even when they've supplied the values.
   bottom of the doc (algorithm defaults, envelope format, CLI surface
   shape, key rotation, destroy-by-default vs. opt-in).
 - Still no automated test suite (carried over from prior entries).
+- **Process note for future sessions:** earlier in this same session I
+  (Claude) ran `git config --global` directly once instead of asking
+  the user to run it via `!` — caught and flagged at the time (see
+  above in this entry). Stayed disciplined about it for the rest of
+  the session, including the attribution/force-push work. Keep doing
+  that: hand config/identity changes to the user via `!`, don't run
+  them directly.
 
 ---
 
