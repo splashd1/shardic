@@ -1,3 +1,88 @@
+# Session notes — 2026-07-12 (raised defaults + GUI testing spree)
+
+## What happened
+
+Started from a cryptographic-strength discussion (recap of codeword
+modes/entropy, then a deep-dive on reconciling human-memorable
+codewords against "NSA-grade" strength — landed on: split-knowledge
+(the existing `D`-of-`T` threshold) is the actual real-world answer,
+not cramming more entropy into one human's memory).
+
+1. **Raised the actual defaults** (commit `3401fb2`): memorable mode
+   now defaults to 8 words (~103 bits, up from 5/~65) and Argon2id
+   defaults moved to `time_cost=4`/`memory_cost=256 MiB` (up from
+   3/64 MiB), in both CLIs and `vault_core.resolve_word_mode()`/`kdf.py`.
+   Added a "Customize Argon2id cost (advanced)" checkbox to both GUI
+   Create tabs — unchecked by default (hidden fields, raised defaults
+   apply), checking it reveals time/memory/parallelism entry fields
+   pre-filled with the defaults and freely overridable, wired through
+   `vault_core.resolve_kdf_params`. README updated throughout.
+
+2. **Found and fixed a real GUI bug** (commit `fcbd352`): all four
+   background-worker error handlers (`CreateTab`/`RecoverTab` ×
+   base/prime) deferred error reporting via
+   `self.after(0, lambda: ...str(e)...)`, but Python deletes an
+   `except ... as e` variable when the block exits — so by the time the
+   deferred lambda ran, `e` was gone and it raised `NameError` instead
+   of ever showing the error dialog. Real-world impact: wrong/missing
+   codewords (or any create/recover failure) produced *no* feedback at
+   all — button just stayed disabled forever. Fixed by capturing the
+   message into a plain local var before scheduling the callback.
+   Found via headless GUI testing (Xvfb + a venv with `argon2-cffi`,
+   driving the real Tkinter widgets/mainloop, not just unit-testing the
+   core logic).
+
+3. **Extensive headless GUI regression testing** across both sessions'
+   worth of changes: widget mechanics (memorable/strong-words mutual
+   exclusion, field enable/disable, Argon2 checkbox show/hide),
+   synchronous validation errors, the async error-dialog paths above
+   (both exception branches), and full create→recover round trips in
+   several modes (memorable, synthetic+strong-words, shardic-prime with
+   shuffled codeword order). All via disposable venvs + `xvfb-run`,
+   cleaned up after each run — never left in the repo.
+
+4. **Found and fixed a second real bug** (uncommitted as of end of
+   session — see below): `vault_core.peek_metadata()` had no
+   `scheme` check, so the GUI's base `RecoverTab` would silently accept
+   a shardic-prime `.krypt` at load time (unlike `RecoverPrimeTab`,
+   which correctly refuses a base-scheme vault). It always failed safe
+   in practice (GF(256)'s duplicate-x-coordinate guard catches it) but
+   with a confusing internals error instead of a clear rejection. Note:
+   initially over-claimed this also affected the CLI — it doesn't,
+   `vault_recover.py` already had its own separate scheme guard in
+   `main()` that I'd missed on first read. Fix adds the same check to
+   both `peek_metadata()` (GUI load-time rejection, matching the prime
+   tab's UX) and `resolve_kdf()` (the actual shared choke point for
+   `match_codewords()`/CLI, as defense-in-depth). Verified: CLI
+   (already worked), `peek_metadata`, `resolve_kdf`, and GUI `on_load`
+   all now reject cleanly; normal recovery unaffected.
+
+## State at end of session
+
+- `3401fb2` and `fcbd352` pushed to `origin/main`.
+- **`vault_core.py` has an uncommitted fix** (the `peek_metadata`/
+  `resolve_kdf` scheme-check addition from item 4) — user hadn't yet
+  said "commit this" when the session ended on a sync request. Next
+  session: confirm and commit if still wanted.
+- No other working-tree changes; all test venvs/vaults were scratch
+  and cleaned up.
+
+## Possibly worth following up
+
+- Still no automated test suite — everything this session was
+  scripted ad-hoc headless GUI testing (Xvfb + throwaway venvs),
+  same gap noted in prior entries. This session in particular found
+  two real bugs that unit tests on `vault_core`/`vault_core_prime`
+  alone wouldn't have caught (both were GUI-layer/integration issues),
+  which is a decent argument for at least a headless-GUI test script
+  living in-repo rather than being reinvented each session.
+- The cross-scheme fix touched `resolve_kdf()`, which is also called
+  by `vault_recover.py` directly — worth double-checking nothing else
+  depends on `resolve_kdf()` *not* raising for prime metadata before
+  that commit lands.
+
+---
+
 # Session notes — 2026-07-12 (gh auth setup)
 
 ## What happened
