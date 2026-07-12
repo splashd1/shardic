@@ -93,7 +93,7 @@ def resolve_word_mode(
             "(memorability vs. density) -- pick one."
         )
     if is_memorable:
-        return None, (word_count if word_count is not None else 5), dictionary_path, False, 0
+        return None, (word_count if word_count is not None else 8), dictionary_path, False, 0
 
     if word_length < 3:
         raise ValueError("word length should be at least 3")

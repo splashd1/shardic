@@ -112,8 +112,8 @@ argon2-cffi" message if a vault needs it and it's missing.
 
 Create a vault from a file or directory, 5 trustees, 3 needed to recover.
 Leaving out `--word-length` gets you the default: **memorable mode**
-(`--memorable`) — whole, real words from the bundled EFF wordlist, 5
-per trustee, ~65 bits of entropy, meant to actually be remembered
+(`--memorable`) — whole, real words from the bundled EFF wordlist, 8
+per trustee, ~103 bits of entropy, meant to actually be remembered
 rather than written down:
 ```
 python3 vault_create.py --input ./my_directory \
@@ -154,8 +154,8 @@ automatically (and still understands older split-file vaults — see below).
 --kdf {argon2id,pbkdf2}          # default: argon2id if available, else prompts to fall back
 --yes / -y                       # auto-accept the PBKDF2 fallback warning, no prompt
 --pbkdf2-iterations N            # default 400000
---argon2-time-cost N             # default 3
---argon2-memory-cost-kib N       # default 65536 (64 MiB)
+--argon2-time-cost N             # default 4
+--argon2-memory-cost-kib N       # default 262144 (256 MiB)
 --argon2-parallelism N           # default 4
 ```
 
@@ -171,8 +171,8 @@ exclusive, since they optimize for opposite things.
   is omitted)**: whole, real dictionary words — the bundled EFF long
   wordlist (`eff_wordlist_words.py`, 7,772 words) unless `--dictionary`
   points somewhere else — with no length filtering, no case
-  randomization, no digit suffixes. Default word count is 5
-  (~65 bits with the bundled list). This is the recommended default:
+  randomization, no digit suffixes. Default word count is 8
+  (~103 bits with the bundled list). This is the recommended default:
   real words engage semantic memory in a way random syllables and
   mixed-case/digit noise don't, so a trustee has a real shot at
   recalling their codeword without writing it down. Passing
@@ -230,10 +230,16 @@ Three tabs:
   then click Create. Memorable and Strong words are mutually
   exclusive — checking one unchecks and disables the other, and the
   codeword-length field is disabled while Memorable is checked, since
-  it's ignored in that mode. Progress and log output stream into the
-  window, including an estimated codeword-entropy figure; a completion
-  dialog shows where the `.krypt` file and trustee codeword files
-  landed.
+  it's ignored in that mode. A "Customize Argon2id cost (advanced)"
+  checkbox under the KDF option is unchecked by default, so the raised
+  defaults (`time_cost=4`, `memory_cost=256 MiB`, `parallelism=4`,
+  same as the CLI's `--argon2-*` flags — see "Choosing / tuning the
+  KDF" above) apply with no extra fields shown; checking it reveals
+  time-cost/memory-cost/parallelism entry fields to override them —
+  lower for faster recovery on constrained hardware, or raise further
+  for more margin. Progress and log output stream into the window,
+  including an estimated codeword-entropy figure; a completion dialog
+  shows where the `.krypt` file and trustee codeword files landed.
 - **Recover Vault** — pick the `.krypt` file and click "Load Vault
   Info" to see how many codewords are needed; that many password-style
   entry fields appear automatically. Fill in the codewords, pick an
@@ -449,7 +455,7 @@ plain `vault_create.py` output with plain `vault_recover.py`.
   per length than that but no semantic meaning to help recall it. In
   every mode, `--word-count` is what actually gets you into a real
   security range — each extra word roughly multiplies the search
-  space, so aim for the default of 5 in memorable mode, or 2–3+ in the
+  space, so aim for the default of 8 in memorable mode, or 2–3+ in the
   other modes. `--strong-words` (see "Codeword modes" above, only
   available outside memorable mode) raises the bits-per-character of
   each word without adding length, if codewords will be typed/pasted
@@ -461,12 +467,13 @@ plain `vault_create.py` output with plain `vault_recover.py`.
 - **Argon2id vs. PBKDF2**: Argon2id's memory-hardness is what raises
   the cost of an attacker running many parallel guesses on GPUs/ASICs
   against a leaked `.krypt` file — PBKDF2 is cheap to parallelize by
-  comparison at equivalent wall-clock cost. The defaults (`time_cost=3`,
-  `memory_cost=64 MiB`, `parallelism=4`) are a reasonable balance of
-  security and usability on typical hardware; raise
-  `--argon2-memory-cost-kib` if you want to make large-scale offline
-  guessing meaningfully more expensive, at the cost of slower recovery
-  and more RAM used per attempt on your own machine too.
+  comparison at equivalent wall-clock cost. The defaults (`time_cost=4`,
+  `memory_cost=256 MiB`, `parallelism=4`) are deliberately raised past a
+  bare-minimum balance to give real margin against large-scale offline
+  guessing without materially slowing down a legitimate recovery; lower
+  `--argon2-memory-cost-kib`/`--argon2-time-cost` (CLI) or check
+  "Customize Argon2id cost" (GUI) if you need faster recovery on
+  constrained hardware, or raise them further for even more margin.
 - **Threshold security is information-theoretic; codeword security is
   not.** Getting `D-1` shares gives an attacker literally zero bits
   about the DEK regardless of computing power. Getting a codeword

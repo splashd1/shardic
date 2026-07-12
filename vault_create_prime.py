@@ -56,7 +56,7 @@ def main():
                      help="Character length of each codeword. Omit for --memorable mode (the default "
                           "when this is left out): whole real words of varying length instead.")
     ap.add_argument("--word-count", type=int, default=None,
-                     help="Words per trustee codeword phrase (default: 5 in --memorable mode, else 1; "
+                     help="Words per trustee codeword phrase (default: 8 in --memorable mode, else 1; "
                           "use >1 for real entropy margin)")
     ap.add_argument("--dictionary", default=None,
                      help="Wordlist file (one word per line). In --memorable mode, defaults to the bundled "
@@ -77,8 +77,8 @@ def main():
     ap.add_argument("--kdf", choices=list(kdfmod.METHODS), default=None,
                      help="KDF for share protection. Default: argon2id if argon2-cffi is installed, else pbkdf2.")
     ap.add_argument("--pbkdf2-iterations", type=int, default=None, help="Override PBKDF2 iteration count")
-    ap.add_argument("--argon2-time-cost", type=int, default=None, help="Override Argon2id time_cost (default 3)")
-    ap.add_argument("--argon2-memory-cost-kib", type=int, default=None, help="Override Argon2id memory cost in KiB (default 65536 = 64 MiB)")
+    ap.add_argument("--argon2-time-cost", type=int, default=None, help="Override Argon2id time_cost (default 4)")
+    ap.add_argument("--argon2-memory-cost-kib", type=int, default=None, help="Override Argon2id memory cost in KiB (default 262144 = 256 MiB)")
     ap.add_argument("--argon2-parallelism", type=int, default=None, help="Override Argon2id parallelism (default 4)")
     ap.add_argument("--yes", "-y", action="store_true", help="Assume yes to any confirmation prompts (e.g. proceeding without Argon2id)")
     args = ap.parse_args()

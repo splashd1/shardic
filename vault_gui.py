@@ -116,7 +116,7 @@ class CreateTab(ttk.Frame):
         self.trustees_var = tk.IntVar(value=5)
         self.threshold_var = tk.IntVar(value=3)
         self.word_length_var = tk.IntVar(value=8)
-        self.word_count_var = tk.IntVar(value=5)
+        self.word_count_var = tk.IntVar(value=8)
         self.memorable_var = tk.BooleanVar(value=True)
         self.strong_words_var = tk.BooleanVar(value=False)
         self.word_length_spinbox = None
@@ -146,7 +146,8 @@ class CreateTab(ttk.Frame):
         add_row("Words per trustee codeword", lambda r: ttk.Spinbox(
             self, from_=1, to=10, textvariable=self.word_count_var, width=8
         ).grid(row=r, column=1, sticky="w"),
-            help_text="More words = more entropy. 5+ recommended for memorable mode, 2+ otherwise.")
+            help_text="More words = more entropy. 8+ recommended for memorable mode (this default), "
+                       "2+ otherwise -- lower for easier recall, higher for more margin.")
 
         def _strong_words_widget(r):
             cb = ttk.Checkbutton(self, variable=self.strong_words_var, command=self._on_strong_words_toggle)
@@ -197,6 +198,34 @@ class CreateTab(ttk.Frame):
         if not kdfmod.ARGON2_AVAILABLE:
             argon2_radio.state(["disabled"])
         ttk.Radiobutton(kdf_frame, text="PBKDF2 (no extra dependency)", variable=self.kdf_var, value="pbkdf2").pack(anchor="w")
+
+        self.argon2_custom_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            kdf_frame, text="Customize Argon2id cost (advanced)",
+            variable=self.argon2_custom_var, command=self._on_argon2_custom_toggle,
+        ).pack(anchor="w", pady=(6, 0))
+
+        self.argon2_time_cost_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_TIME_COST)
+        self.argon2_memory_cost_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_MEMORY_COST_KIB)
+        self.argon2_parallelism_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_PARALLELISM)
+        self.argon2_custom_frame = ttk.Frame(kdf_frame)
+        for label_text, var, width in (
+            ("Time cost", self.argon2_time_cost_var, 6),
+            ("Memory cost (KiB)", self.argon2_memory_cost_var, 10),
+            ("Parallelism", self.argon2_parallelism_var, 6),
+        ):
+            field_row = ttk.Frame(self.argon2_custom_frame)
+            ttk.Label(field_row, text=label_text, width=16).pack(side="left")
+            ttk.Spinbox(field_row, from_=1, to=10_000_000, textvariable=var, width=width).pack(side="left")
+            field_row.pack(anchor="w", pady=1)
+        ttk.Label(
+            self.argon2_custom_frame,
+            text=f"Defaults ({kdfmod.DEFAULT_ARGON2_TIME_COST} / {kdfmod.DEFAULT_ARGON2_MEMORY_COST_KIB} KiB / "
+                 f"{kdfmod.DEFAULT_ARGON2_PARALLELISM}) are already raised for a high security margin -- "
+                 "lower them for faster recovery, or raise further for even more margin.",
+            foreground="#666", font=("", 8), wraplength=380, justify="left",
+        ).pack(anchor="w", pady=(2, 0))
+        # self.argon2_custom_frame stays unpacked (hidden) until the checkbox above is checked
         row += 1
 
         # Action button
@@ -243,6 +272,12 @@ class CreateTab(ttk.Frame):
         if bool(self.strong_words_var.get()):
             self.memorable_var.set(False)
             self._on_memorable_toggle()
+
+    def _on_argon2_custom_toggle(self):
+        if bool(self.argon2_custom_var.get()):
+            self.argon2_custom_frame.pack(anchor="w", pady=(4, 2))
+        else:
+            self.argon2_custom_frame.pack_forget()
 
     def on_create(self):
         input_path = self.input_entry.get().strip()
@@ -305,7 +340,19 @@ class CreateTab(ttk.Frame):
         else:
             kdf_method = choice
 
-        kdf_params = kdfmod.default_params(kdf_method)
+        if kdf_method == "argon2id" and bool(self.argon2_custom_var.get()):
+            try:
+                argon2_overrides = {
+                    "time_cost": int(self.argon2_time_cost_var.get()),
+                    "memory_cost_kib": int(self.argon2_memory_cost_var.get()),
+                    "parallelism": int(self.argon2_parallelism_var.get()),
+                }
+            except (tk.TclError, ValueError):
+                messagebox.showerror(APP_TITLE, "Argon2id time cost, memory cost, and parallelism must be numbers.")
+                return
+            kdf_params = vault_core.resolve_kdf_params(kdf_method, argon2_overrides)
+        else:
+            kdf_params = kdfmod.default_params(kdf_method)
 
         self._running = True
         self.create_button.configure(state="disabled")
@@ -583,7 +630,7 @@ class CreatePrimeTab(ttk.Frame):
         self.trustees_var = tk.IntVar(value=4)
         self.threshold_var = tk.IntVar(value=3)
         self.word_length_var = tk.IntVar(value=8)
-        self.word_count_var = tk.IntVar(value=5)
+        self.word_count_var = tk.IntVar(value=8)
         self.memorable_var = tk.BooleanVar(value=True)
         self.strong_words_var = tk.BooleanVar(value=False)
         self.word_length_spinbox = None
@@ -615,7 +662,8 @@ class CreatePrimeTab(ttk.Frame):
         add_row("Words per trustee codeword", lambda r: ttk.Spinbox(
             self, from_=1, to=10, textvariable=self.word_count_var, width=8
         ).grid(row=r, column=1, sticky="w"),
-            help_text="More words = more entropy. 5+ recommended for memorable mode, 2+ otherwise.")
+            help_text="More words = more entropy. 8+ recommended for memorable mode (this default), "
+                       "2+ otherwise -- lower for easier recall, higher for more margin.")
 
         def _strong_words_widget(r):
             cb = ttk.Checkbutton(self, variable=self.strong_words_var, command=self._on_strong_words_toggle)
@@ -666,6 +714,34 @@ class CreatePrimeTab(ttk.Frame):
         if not kdfmod.ARGON2_AVAILABLE:
             argon2_radio.state(["disabled"])
         ttk.Radiobutton(kdf_frame, text="PBKDF2 (no extra dependency)", variable=self.kdf_var, value="pbkdf2").pack(anchor="w")
+
+        self.argon2_custom_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            kdf_frame, text="Customize Argon2id cost (advanced)",
+            variable=self.argon2_custom_var, command=self._on_argon2_custom_toggle,
+        ).pack(anchor="w", pady=(6, 0))
+
+        self.argon2_time_cost_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_TIME_COST)
+        self.argon2_memory_cost_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_MEMORY_COST_KIB)
+        self.argon2_parallelism_var = tk.IntVar(value=kdfmod.DEFAULT_ARGON2_PARALLELISM)
+        self.argon2_custom_frame = ttk.Frame(kdf_frame)
+        for label_text, var, width in (
+            ("Time cost", self.argon2_time_cost_var, 6),
+            ("Memory cost (KiB)", self.argon2_memory_cost_var, 10),
+            ("Parallelism", self.argon2_parallelism_var, 6),
+        ):
+            field_row = ttk.Frame(self.argon2_custom_frame)
+            ttk.Label(field_row, text=label_text, width=16).pack(side="left")
+            ttk.Spinbox(field_row, from_=1, to=10_000_000, textvariable=var, width=width).pack(side="left")
+            field_row.pack(anchor="w", pady=1)
+        ttk.Label(
+            self.argon2_custom_frame,
+            text=f"Defaults ({kdfmod.DEFAULT_ARGON2_TIME_COST} / {kdfmod.DEFAULT_ARGON2_MEMORY_COST_KIB} KiB / "
+                 f"{kdfmod.DEFAULT_ARGON2_PARALLELISM}) are already raised for a high security margin -- "
+                 "lower them for faster recovery, or raise further for even more margin.",
+            foreground="#666", font=("", 8), wraplength=380, justify="left",
+        ).pack(anchor="w", pady=(2, 0))
+        # self.argon2_custom_frame stays unpacked (hidden) until the checkbox above is checked
         row += 1
 
         # Action button
@@ -710,6 +786,12 @@ class CreatePrimeTab(ttk.Frame):
         if bool(self.strong_words_var.get()):
             self.memorable_var.set(False)
             self._on_memorable_toggle()
+
+    def _on_argon2_custom_toggle(self):
+        if bool(self.argon2_custom_var.get()):
+            self.argon2_custom_frame.pack(anchor="w", pady=(4, 2))
+        else:
+            self.argon2_custom_frame.pack_forget()
 
     def on_create(self):
         input_path = self.input_entry.get().strip()
@@ -777,7 +859,19 @@ class CreatePrimeTab(ttk.Frame):
         else:
             kdf_method = choice
 
-        kdf_params = kdfmod.default_params(kdf_method)
+        if kdf_method == "argon2id" and bool(self.argon2_custom_var.get()):
+            try:
+                argon2_overrides = {
+                    "time_cost": int(self.argon2_time_cost_var.get()),
+                    "memory_cost_kib": int(self.argon2_memory_cost_var.get()),
+                    "parallelism": int(self.argon2_parallelism_var.get()),
+                }
+            except (tk.TclError, ValueError):
+                messagebox.showerror(APP_TITLE, "Argon2id time cost, memory cost, and parallelism must be numbers.")
+                return
+            kdf_params = vault_core.resolve_kdf_params(kdf_method, argon2_overrides)
+        else:
+            kdf_params = kdfmod.default_params(kdf_method)
 
         self._running = True
         self.create_button.configure(state="disabled")
