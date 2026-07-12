@@ -70,6 +70,7 @@ government and business scenarios.
 - `build_appimage.sh` — builds standalone Linux binaries + `.AppImage` packages (CLI and GUI)
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
 - `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
+- `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. CLI-only for now (no GUI tab yet).
 
 ## Requirements (running from source)
 ```
@@ -324,6 +325,62 @@ going forward.
    fails fast. With T in the tens this is instant, and it means the
    `.krypt` file by itself reveals zero assignment information even if
    someone else gets hold of it.
+
+## shardic-prime: a mandatory prime trustee variant
+
+The base scheme treats every trustee identically: any `D` of `T`
+codewords recover the vault, full stop. **shardic-prime** is a
+separate variant (own CLI scripts, own `.krypt` container format) that
+adds one *essential* trustee on top of that: the **prime trustee**'s
+codeword must be among the ones entered, no matter what — the
+remaining trustees stay a plain interchangeable pool for the rest of
+the threshold. Useful when one specific person (e.g. the estate's
+executor, the org's security lead) must always sign off, while backup
+signers around them can be any mix.
+
+`T` and `D` now count the prime trustee: `T` total trustees = 1 prime
++ `(T-1)` pool trustees; `D` codewords required = the prime's +
+`(D-1)` from the pool.
+
+```
+python3 vault_create_prime.py --input ./my_directory \
+    --trustees 4 --threshold 3 --word-length 6 --word-count 2
+```
+creates 1 prime trustee + 3 pool trustees; recovery needs the prime
+codeword plus any 2 of the 3 pool codewords. All `4` of the pool
+codewords together, *without* the prime one, recover nothing — see
+"How it works" below for why that's mathematically guaranteed, not
+just enforced by the CLI.
+
+```
+python3 vault_recover_prime.py VAULT.krypt
+```
+prompts for codewords in any order — you don't say up front which one
+is the prime trustee's; it's identified automatically once it
+decrypts successfully.
+
+**How it works**: a random mask the same length as the DEK is
+generated. The prime trustee's codeword protects that mask directly
+(a one-time pad, not a Shamir share). The DEK, XORed with the mask, is
+then split with the ordinary `gf256_sss` scheme into the pool shares
+(threshold `D-1`, count `T-1`). Recovery needs the mask *and*
+`D-1` pool shares to reconstruct the masked DEK and unmask it — without
+the mask, the pool shares alone (even all of them) are information-
+theoretically indistinguishable from random. See `gf256_sss_prime.py`
+for the full construction and `vault_core_prime.py` for how it's wired
+into vault creation/recovery. Share records keep the base scheme's
+"opaque `{salt, nonce, ciphertext}`, shuffled, no mapping table"
+property — which record is the prime one isn't visible from the
+`.krypt` file's structure, only by decrypting it with the right
+codeword.
+
+**Not interchangeable with the base scheme.** A shardic-prime vault
+carries `"scheme": "prime-trustee"` and `"container_format":
+"krypt1-prime"` in its metadata specifically so it's never confused
+with a base `vault_create.py` vault — `vault_recover_prime.py` refuses
+to open a base-scheme `.krypt` file and vice versa. Always pair
+`vault_create_prime.py` output with `vault_recover_prime.py`, and
+plain `vault_create.py` output with plain `vault_recover.py`.
 
 ## Things worth knowing before you rely on this
 

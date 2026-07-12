@@ -123,6 +123,12 @@ def main():
     args = ap.parse_args()
 
     metadata, ciphertext = load_source(args)
+    if metadata.get("scheme") == "prime-trustee":
+        sys.exit(
+            "error: this .krypt file was created by vault_create_prime.py "
+            "(scheme='prime-trustee', a mandatory-prime-trustee vault) -- "
+            "use vault_recover_prime.py instead."
+        )
 
     try:
         kdf_method, kdf_params = vault_core.resolve_kdf(metadata)
