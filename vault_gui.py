@@ -381,9 +381,11 @@ class CreateTab(ttk.Frame):
                 self._log_writer(f"Wrote {len(result['trustee_files'])} trustee codeword files to: {result['words_dir']}")
                 self.after(0, lambda: self._on_create_done(result))
             except (ValueError, vault_core.VaultError) as e:
-                self.after(0, lambda: self._on_create_error(str(e)))
+                msg = str(e)
+                self.after(0, lambda: self._on_create_error(msg))
             except Exception as e:  # noqa: BLE001 - surface anything unexpected to the user
-                self.after(0, lambda: self._on_create_error(f"Unexpected error: {e}"))
+                msg = f"Unexpected error: {e}"
+                self.after(0, lambda: self._on_create_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -559,9 +561,11 @@ class RecoverTab(ttk.Frame):
                 )
                 self.after(0, lambda: self._on_recover_done(result))
             except vault_core.VaultError as e:
-                self.after(0, lambda: self._on_recover_error(str(e)))
+                msg = str(e)
+                self.after(0, lambda: self._on_recover_error(msg))
             except Exception as e:  # noqa: BLE001
-                self.after(0, lambda: self._on_recover_error(f"Unexpected error: {e}"))
+                msg = f"Unexpected error: {e}"
+                self.after(0, lambda: self._on_recover_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -900,9 +904,11 @@ class CreatePrimeTab(ttk.Frame):
                 self._log_writer(f"Wrote {len(result['trustee_files'])} trustee codeword files to: {result['words_dir']}")
                 self.after(0, lambda: self._on_create_done(result))
             except (ValueError, vault_core_prime.VaultError) as e:
-                self.after(0, lambda: self._on_create_error(str(e)))
+                msg = str(e)
+                self.after(0, lambda: self._on_create_error(msg))
             except Exception as e:  # noqa: BLE001 - surface anything unexpected to the user
-                self.after(0, lambda: self._on_create_error(f"Unexpected error: {e}"))
+                msg = f"Unexpected error: {e}"
+                self.after(0, lambda: self._on_create_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1084,9 +1090,11 @@ class RecoverPrimeTab(ttk.Frame):
                 )
                 self.after(0, lambda: self._on_recover_done(result))
             except vault_core_prime.VaultError as e:
-                self.after(0, lambda: self._on_recover_error(str(e)))
+                msg = str(e)
+                self.after(0, lambda: self._on_recover_error(msg))
             except Exception as e:  # noqa: BLE001
-                self.after(0, lambda: self._on_recover_error(f"Unexpected error: {e}"))
+                msg = f"Unexpected error: {e}"
+                self.after(0, lambda: self._on_recover_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
