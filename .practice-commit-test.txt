@@ -1,1 +1,0 @@
-Practice commit created 2026-07-12 to verify local commit flow.
