@@ -116,7 +116,11 @@ class CreateTab(ttk.Frame):
         self.trustees_var = tk.IntVar(value=5)
         self.threshold_var = tk.IntVar(value=3)
         self.word_length_var = tk.IntVar(value=8)
-        self.word_count_var = tk.IntVar(value=2)
+        self.word_count_var = tk.IntVar(value=5)
+        self.memorable_var = tk.BooleanVar(value=True)
+        self.strong_words_var = tk.BooleanVar(value=False)
+        self.word_length_spinbox = None
+        self.strong_words_check = None
 
         add_row("Total trustees (T)", lambda r: ttk.Spinbox(
             self, from_=1, to=255, textvariable=self.trustees_var, width=8
@@ -124,21 +128,35 @@ class CreateTab(ttk.Frame):
         add_row("Threshold to recover (D)", lambda r: ttk.Spinbox(
             self, from_=1, to=255, textvariable=self.threshold_var, width=8
         ).grid(row=r, column=1, sticky="w"))
-        add_row("Codeword length (characters)", lambda r: ttk.Spinbox(
-            self, from_=3, to=30, textvariable=self.word_length_var, width=8
-        ).grid(row=r, column=1, sticky="w"))
+
+        add_row("Memorable codewords", lambda r: ttk.Checkbutton(
+            self, variable=self.memorable_var, command=self._on_memorable_toggle
+        ).grid(row=r, column=1, sticky="w"),
+            help_text="Whole, real dictionary words (bundled EFF wordlist by default) instead "
+                       "of random syllables -- easier to actually remember. Recommended "
+                       "default; uncheck for fixed-length/denser codewords instead.")
+
+        def _word_length_widget(r):
+            sb = ttk.Spinbox(self, from_=3, to=30, textvariable=self.word_length_var, width=8)
+            sb.grid(row=r, column=1, sticky="w")
+            self.word_length_spinbox = sb
+        add_row("Codeword length (characters)", _word_length_widget,
+            help_text="Ignored in memorable mode -- real words keep their natural length.")
+
         add_row("Words per trustee codeword", lambda r: ttk.Spinbox(
             self, from_=1, to=10, textvariable=self.word_count_var, width=8
         ).grid(row=r, column=1, sticky="w"),
-            help_text="More words = more entropy. 2+ recommended.")
+            help_text="More words = more entropy. 5+ recommended for memorable mode, 2+ otherwise.")
 
-        self.strong_words_var = tk.BooleanVar(value=False)
-        add_row("Strong words", lambda r: ttk.Checkbutton(
-            self, variable=self.strong_words_var
-        ).grid(row=r, column=1, sticky="w"),
+        def _strong_words_widget(r):
+            cb = ttk.Checkbutton(self, variable=self.strong_words_var, command=self._on_strong_words_toggle)
+            cb.grid(row=r, column=1, sticky="w")
+            self.strong_words_check = cb
+        add_row("Strong words", _strong_words_widget,
             help_text="Randomizes letter case and appends a 3-digit suffix to each word for "
                        "more entropy at the same length. Only use this if codewords will be "
-                       "typed/pasted rather than read aloud or handwritten.")
+                       "typed/pasted rather than read aloud or handwritten. Mutually exclusive "
+                       "with memorable mode (case/digit noise undermines memorability).")
 
         # Dictionary (optional)
         dict_frame = ttk.Frame(self)
@@ -149,9 +167,13 @@ class CreateTab(ttk.Frame):
         ttk.Label(self, text="Dictionary file (optional)").grid(row=row, column=0, sticky="w", pady=3)
         dict_frame.grid(row=row, column=1, sticky="ew", pady=3)
         row += 1
-        ttk.Label(self, text="Leave blank to use built-in synthetic pronounceable words.",
-                  foreground="#666", font=("", 8)).grid(row=row, column=1, sticky="w", pady=(0, 6))
+        ttk.Label(self, text="Leave blank: memorable mode uses the bundled EFF wordlist, "
+                              "otherwise built-in synthetic pronounceable words.",
+                  foreground="#666", font=("", 8), wraplength=440, justify="left").grid(
+            row=row, column=1, sticky="w", pady=(0, 6))
         row += 1
+
+        self._on_memorable_toggle()
 
         # Output dir
         out_frame = ttk.Frame(self)
@@ -208,6 +230,20 @@ class CreateTab(ttk.Frame):
         if self._running:
             self.after(100, self._poll_log_queue)
 
+    def _on_memorable_toggle(self):
+        memorable = bool(self.memorable_var.get())
+        if memorable:
+            self.strong_words_var.set(False)
+        if self.strong_words_check is not None:
+            self.strong_words_check.state(["disabled" if memorable else "!disabled"])
+        if self.word_length_spinbox is not None:
+            self.word_length_spinbox.state(["disabled" if memorable else "!disabled"])
+
+    def _on_strong_words_toggle(self):
+        if bool(self.strong_words_var.get()):
+            self.memorable_var.set(False)
+            self._on_memorable_toggle()
+
     def on_create(self):
         input_path = self.input_entry.get().strip()
         if not input_path:
@@ -217,20 +253,21 @@ class CreateTab(ttk.Frame):
             messagebox.showerror(APP_TITLE, f"Input path not found:\n{input_path}")
             return
 
+        memorable = bool(self.memorable_var.get())
         try:
             trustees = int(self.trustees_var.get())
             threshold = int(self.threshold_var.get())
-            word_length = int(self.word_length_var.get())
             word_count = int(self.word_count_var.get())
+            word_length = None if memorable else int(self.word_length_var.get())
         except (tk.TclError, ValueError):
             messagebox.showerror(APP_TITLE, "Trustees, threshold, word length, and word count must be numbers.")
             return
-        strong_words = bool(self.strong_words_var.get())
+        strong_words = bool(self.strong_words_var.get()) and not memorable
 
         if threshold > trustees:
             messagebox.showerror(APP_TITLE, "Threshold (D) cannot exceed total trustees (T).")
             return
-        if word_length < 3:
+        if not memorable and word_length < 3:
             messagebox.showerror(APP_TITLE, "Codeword length should be at least 3 characters.")
             return
 
@@ -546,7 +583,11 @@ class CreatePrimeTab(ttk.Frame):
         self.trustees_var = tk.IntVar(value=4)
         self.threshold_var = tk.IntVar(value=3)
         self.word_length_var = tk.IntVar(value=8)
-        self.word_count_var = tk.IntVar(value=2)
+        self.word_count_var = tk.IntVar(value=5)
+        self.memorable_var = tk.BooleanVar(value=True)
+        self.strong_words_var = tk.BooleanVar(value=False)
+        self.word_length_spinbox = None
+        self.strong_words_check = None
 
         add_row("Total trustees, incl. prime (T)", lambda r: ttk.Spinbox(
             self, from_=2, to=255, textvariable=self.trustees_var, width=8
@@ -556,21 +597,35 @@ class CreatePrimeTab(ttk.Frame):
             self, from_=2, to=255, textvariable=self.threshold_var, width=8
         ).grid(row=r, column=1, sticky="w"),
             help_text="The prime codeword + (D-1) from the pool.")
-        add_row("Codeword length (characters)", lambda r: ttk.Spinbox(
-            self, from_=3, to=30, textvariable=self.word_length_var, width=8
-        ).grid(row=r, column=1, sticky="w"))
+
+        add_row("Memorable codewords", lambda r: ttk.Checkbutton(
+            self, variable=self.memorable_var, command=self._on_memorable_toggle
+        ).grid(row=r, column=1, sticky="w"),
+            help_text="Whole, real dictionary words (bundled EFF wordlist by default) instead "
+                       "of random syllables -- easier to actually remember. Recommended "
+                       "default; uncheck for fixed-length/denser codewords instead.")
+
+        def _word_length_widget(r):
+            sb = ttk.Spinbox(self, from_=3, to=30, textvariable=self.word_length_var, width=8)
+            sb.grid(row=r, column=1, sticky="w")
+            self.word_length_spinbox = sb
+        add_row("Codeword length (characters)", _word_length_widget,
+            help_text="Ignored in memorable mode -- real words keep their natural length.")
+
         add_row("Words per trustee codeword", lambda r: ttk.Spinbox(
             self, from_=1, to=10, textvariable=self.word_count_var, width=8
         ).grid(row=r, column=1, sticky="w"),
-            help_text="More words = more entropy. 2+ recommended.")
+            help_text="More words = more entropy. 5+ recommended for memorable mode, 2+ otherwise.")
 
-        self.strong_words_var = tk.BooleanVar(value=False)
-        add_row("Strong words", lambda r: ttk.Checkbutton(
-            self, variable=self.strong_words_var
-        ).grid(row=r, column=1, sticky="w"),
+        def _strong_words_widget(r):
+            cb = ttk.Checkbutton(self, variable=self.strong_words_var, command=self._on_strong_words_toggle)
+            cb.grid(row=r, column=1, sticky="w")
+            self.strong_words_check = cb
+        add_row("Strong words", _strong_words_widget,
             help_text="Randomizes letter case and appends a 3-digit suffix to each word for "
                        "more entropy at the same length. Only use this if codewords will be "
-                       "typed/pasted rather than read aloud or handwritten.")
+                       "typed/pasted rather than read aloud or handwritten. Mutually exclusive "
+                       "with memorable mode (case/digit noise undermines memorability).")
 
         # Dictionary (optional)
         dict_frame = ttk.Frame(self)
@@ -581,9 +636,13 @@ class CreatePrimeTab(ttk.Frame):
         ttk.Label(self, text="Dictionary file (optional)").grid(row=row, column=0, sticky="w", pady=3)
         dict_frame.grid(row=row, column=1, sticky="ew", pady=3)
         row += 1
-        ttk.Label(self, text="Leave blank to use built-in synthetic pronounceable words.",
-                  foreground="#666", font=("", 8)).grid(row=row, column=1, sticky="w", pady=(0, 6))
+        ttk.Label(self, text="Leave blank: memorable mode uses the bundled EFF wordlist, "
+                              "otherwise built-in synthetic pronounceable words.",
+                  foreground="#666", font=("", 8), wraplength=440, justify="left").grid(
+            row=row, column=1, sticky="w", pady=(0, 6))
         row += 1
+
+        self._on_memorable_toggle()
 
         # Output dir
         out_frame = ttk.Frame(self)
@@ -638,6 +697,20 @@ class CreatePrimeTab(ttk.Frame):
         if self._running:
             self.after(100, self._poll_log_queue)
 
+    def _on_memorable_toggle(self):
+        memorable = bool(self.memorable_var.get())
+        if memorable:
+            self.strong_words_var.set(False)
+        if self.strong_words_check is not None:
+            self.strong_words_check.state(["disabled" if memorable else "!disabled"])
+        if self.word_length_spinbox is not None:
+            self.word_length_spinbox.state(["disabled" if memorable else "!disabled"])
+
+    def _on_strong_words_toggle(self):
+        if bool(self.strong_words_var.get()):
+            self.memorable_var.set(False)
+            self._on_memorable_toggle()
+
     def on_create(self):
         input_path = self.input_entry.get().strip()
         if not input_path:
@@ -647,15 +720,16 @@ class CreatePrimeTab(ttk.Frame):
             messagebox.showerror(APP_TITLE, f"Input path not found:\n{input_path}")
             return
 
+        memorable = bool(self.memorable_var.get())
         try:
             trustees = int(self.trustees_var.get())
             threshold = int(self.threshold_var.get())
-            word_length = int(self.word_length_var.get())
             word_count = int(self.word_count_var.get())
+            word_length = None if memorable else int(self.word_length_var.get())
         except (tk.TclError, ValueError):
             messagebox.showerror(APP_TITLE, "Trustees, threshold, word length, and word count must be numbers.")
             return
-        strong_words = bool(self.strong_words_var.get())
+        strong_words = bool(self.strong_words_var.get()) and not memorable
 
         if threshold < 2:
             messagebox.showerror(APP_TITLE, "Threshold (D) must be at least 2: the prime codeword plus >= 1 from the pool.")
@@ -666,7 +740,7 @@ class CreatePrimeTab(ttk.Frame):
         if threshold > trustees:
             messagebox.showerror(APP_TITLE, "Threshold (D) cannot exceed total trustees (T).")
             return
-        if word_length < 3:
+        if not memorable and word_length < 3:
             messagebox.showerror(APP_TITLE, "Codeword length should be at least 3 characters.")
             return
 

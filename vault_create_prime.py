@@ -52,15 +52,27 @@ def main():
                      help="Total trustees INCLUDING the prime trustee (T)")
     ap.add_argument("--threshold", "-D", type=int, required=True,
                      help="Codewords required to recover, INCLUDING the prime trustee's (D)")
-    ap.add_argument("--word-length", "-N", type=int, required=True, help="Character length of each codeword")
-    ap.add_argument("--word-count", type=int, default=1,
-                     help="Words per trustee codeword phrase (default 1; use >1 for real entropy margin)")
+    ap.add_argument("--word-length", "-N", type=int, default=None,
+                     help="Character length of each codeword. Omit for --memorable mode (the default "
+                          "when this is left out): whole real words of varying length instead.")
+    ap.add_argument("--word-count", type=int, default=None,
+                     help="Words per trustee codeword phrase (default: 5 in --memorable mode, else 1; "
+                          "use >1 for real entropy margin)")
     ap.add_argument("--dictionary", default=None,
-                     help="Optional wordlist file (one word per line). Falls back to synthetic pronounceable words if omitted.")
+                     help="Wordlist file (one word per line). In --memorable mode, defaults to the bundled "
+                          "EFF wordlist; otherwise falls back to synthetic pronounceable words if omitted.")
+    ap.add_argument("--memorable", action="store_true",
+                     help="Optimize for a trustee being able to recall their codeword instead of writing "
+                          "it down: whole, real dictionary words (bundled EFF wordlist by default), no "
+                          "length filtering, no case randomization, no digit suffixes. This is also the "
+                          "default whenever --word-length is omitted; pass this explicitly for clarity in "
+                          "scripts, or to force it even if --word-length is also given (which is then "
+                          "ignored). Mutually exclusive with --strong-words.")
     ap.add_argument("--strong-words", action="store_true",
                      help="Opt-in higher-entropy codewords: randomize letter case and append a "
                           "3-digit suffix to each word. Only worth it if codewords will be "
-                          "typed/pasted rather than read aloud or handwritten.")
+                          "typed/pasted rather than read aloud or handwritten. Mutually exclusive "
+                          "with --memorable, since case/digit noise undermines memorability.")
     ap.add_argument("--outdir", default=None, help="Output directory (default: ./vault_<timestamp>)")
     ap.add_argument("--kdf", choices=list(kdfmod.METHODS), default=None,
                      help="KDF for share protection. Default: argon2id if argon2-cffi is installed, else pbkdf2.")
@@ -116,19 +128,36 @@ def main():
 
     print(f"[i] Share protection KDF: {kdf_method} {kdf_params}")
 
+    if args.memorable and args.word_length is not None:
+        print(f"[i] --memorable set: ignoring --word-length {args.word_length} (using whole real words instead).")
+
+    try:
+        word_length, word_count, dictionary_path, randomize_case, digit_suffix_len = vault_core.resolve_word_mode(
+            word_length=args.word_length,
+            word_count=args.word_count,
+            dictionary_path=args.dictionary,
+            memorable=args.memorable,
+            strong_words=args.strong_words,
+        )
+    except ValueError as e:
+        sys.exit(f"error: {e}")
+
+    if word_length is None and args.word_length is None and not args.memorable:
+        print("[i] No --word-length given: defaulting to --memorable mode (whole real words).")
+
     try:
         result = vault_core_prime.create_vault_prime(
             input_path=args.input,
             trustees=args.trustees,
             threshold=args.threshold,
-            word_length=args.word_length,
-            word_count=args.word_count,
-            dictionary_path=args.dictionary,
+            word_length=word_length,
+            word_count=word_count,
+            dictionary_path=dictionary_path,
             outdir=args.outdir,
             kdf_method=kdf_method,
             kdf_params=kdf_params,
-            randomize_case=args.strong_words,
-            digit_suffix_len=3 if args.strong_words else 0,
+            randomize_case=randomize_case,
+            digit_suffix_len=digit_suffix_len,
             log=lambda msg: print(f"[*] {msg}"),
         )
     except (ValueError, vault_core.VaultError) as e:

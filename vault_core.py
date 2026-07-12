@@ -23,7 +23,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from gf256_sss import split_secret, reconstruct_secret
-from wordgen import estimate_word_entropy_bits, load_dictionary, pick_words
+from wordgen import estimate_word_entropy_bits, load_dictionary, pick_words, bundled_memorable_wordlist
 import kdf as kdfmod
 import krypt_container
 
@@ -62,11 +62,55 @@ def resolve_kdf_params(kdf_method: str, overrides: dict | None = None) -> dict:
     return params
 
 
+def resolve_word_mode(
+    word_length: int | None,
+    word_count: int | None,
+    dictionary_path: str | None,
+    memorable: bool,
+    strong_words: bool,
+) -> tuple[int | None, int, str | None, bool, int]:
+    """
+    Resolves the CLI's --word-length/--word-count/--dictionary/
+    --memorable/--strong-words flags into what create_vault expects.
+    Shared by vault_create.py and vault_create_prime.py so both CLIs
+    get identical --memorable behavior.
+
+    Memorable mode triggers on explicit --memorable, OR implicitly
+    whenever --word-length is omitted -- that's the new default path:
+    a bare `--input --trustees --threshold` invocation (no word length
+    given) gets memorable codewords instead of an argparse error
+    demanding one. Passing --word-length always keeps the old
+    fixed-length behavior, so anything relying on it is unaffected.
+
+    Returns (word_length, word_count, dictionary_path, randomize_case,
+    digit_suffix_len) ready to pass straight into create_vault /
+    create_vault_prime. Raises ValueError on conflicting flags.
+    """
+    is_memorable = memorable or word_length is None
+    if is_memorable and strong_words:
+        raise ValueError(
+            "--memorable and --strong-words pull in opposite directions "
+            "(memorability vs. density) -- pick one."
+        )
+    if is_memorable:
+        return None, (word_count if word_count is not None else 5), dictionary_path, False, 0
+
+    if word_length < 3:
+        raise ValueError("word length should be at least 3")
+    return (
+        word_length,
+        word_count if word_count is not None else 1,
+        dictionary_path,
+        strong_words,
+        3 if strong_words else 0,
+    )
+
+
 def create_vault(
     input_path: str,
     trustees: int,
     threshold: int,
-    word_length: int,
+    word_length: int | None,
     word_count: int = 1,
     dictionary_path: str | None = None,
     outdir: str | None = None,
@@ -89,6 +133,12 @@ def create_vault(
     randomize_case/digit_suffix_len are the opt-in stronger-codeword
     mode (see wordgen.py's module docstring) -- both default off.
 
+    word_length=None means memorable mode: dictionary_words (real,
+    whole words, no length filter) is used unfiltered -- pass
+    dictionary_path=None to fall back to wordgen.bundled_memorable_wordlist().
+    Callers doing this should also pass randomize_case=False,
+    digit_suffix_len=0, since those actively hurt memorability.
+
     Returns: {"krypt_path": str, "words_dir": str, "trustee_files": [str, ...],
     "outdir": str, "estimated_word_entropy_bits": float}
     """
@@ -96,7 +146,7 @@ def create_vault(
         raise ValueError("threshold (D) cannot exceed trustees (T)")
     if not (1 <= trustees <= 255):
         raise ValueError("trustees (T) must be between 1 and 255")
-    if word_length < 3:
+    if word_length is not None and word_length < 3:
         raise ValueError("word length should be at least 3")
     if not os.path.exists(input_path):
         raise ValueError(f"input path not found: {input_path}")
@@ -109,11 +159,15 @@ def create_vault(
     words_dir = os.path.join(outdir, "trustee_words")
     os.makedirs(words_dir, exist_ok=True)
 
-    dictionary_words = None
-    if dictionary_path:
+    if word_length is None:
+        dictionary_words = load_dictionary(dictionary_path, None) if dictionary_path else bundled_memorable_wordlist()
+        source = dictionary_path or "the bundled EFF wordlist"
+        log(f"Memorable mode: loaded {len(dictionary_words)} whole, real candidate words from {source}")
+    elif dictionary_path:
         dictionary_words = load_dictionary(dictionary_path, word_length)
         log(f"Loaded {len(dictionary_words)} candidate words of length {word_length} from {dictionary_path}")
     else:
+        dictionary_words = None
         log("No dictionary supplied; using synthetic pronounceable words.")
 
     entropy_bits = estimate_word_entropy_bits(
