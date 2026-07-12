@@ -267,14 +267,30 @@ def create_vault(
 
 def peek_metadata(krypt_path: str) -> dict:
     """Read just the metadata of a .krypt file (threshold, trustee count,
-    KDF, etc.) without attempting any decryption."""
+    KDF, etc.) without attempting any decryption. Raises VaultError if
+    it's a shardic-prime vault (use vault_recover_prime.py for those)."""
     metadata, _ = krypt_container.read_krypt(krypt_path)
+    if metadata.get("scheme") == "prime-trustee":
+        raise VaultError(
+            f"'{krypt_path}' is a shardic-prime vault (scheme='prime-trustee'), "
+            "not a plain krypt1 vault. Use vault_recover_prime.py to recover it."
+        )
     return metadata
 
 
 def resolve_kdf(metadata: dict) -> tuple[str, dict]:
     """Backward compatible with version-1 metadata (PBKDF2 only, flat fields).
-    Raises VaultError if the vault needs Argon2id and it's unavailable."""
+    Raises VaultError if the vault needs Argon2id and it's unavailable, or
+    if this is a shardic-prime vault (use vault_recover_prime.py for those)
+    -- this is the one choke point both vault_recover.py (which reads the
+    container directly, bypassing peek_metadata) and the GUI's
+    match_codewords() both pass through, so it's checked here too, not
+    just in peek_metadata."""
+    if metadata.get("scheme") == "prime-trustee":
+        raise VaultError(
+            "This is a shardic-prime vault (scheme='prime-trustee'), not a "
+            "plain krypt1 vault. Use vault_recover_prime.py to recover it."
+        )
     if "kdf_params" in metadata:
         kdf_method = metadata["kdf"]
         kdf_params = metadata["kdf_params"]
