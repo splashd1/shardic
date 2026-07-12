@@ -1,3 +1,32 @@
+# Session notes — 2026-07-12 (gh auth setup)
+
+## What happened
+
+Logged the local `gh` CLI into GitHub (device-code web flow) as
+account `splashd1` and confirmed full read/write access to
+`splashd1/shardic` (`viewerPermission: ADMIN`). Along the way found
+and fixed two auth/config gaps that would've blocked pushes going
+forward: local git had no `user.name`/`user.email` configured (set to
+`splashd1` / `splashd@gmail.com`), and git wasn't wired to use `gh`'s
+stored credentials for HTTPS push (`gh` had a valid token but `git
+push` still failed with "could not read Username" until running `gh
+auth setup-git`). Verified the full chain end-to-end by pushing a
+throwaway test commit (`.gh-auth-test.txt`) to `main` and confirming
+it via `gh api repos/splashd1/shardic/commits/main`, then reverted it
+with `git revert` on request — working tree is clean, no trace left
+except the add+revert pair in history.
+
+## State at end of session
+
+- `gh auth status` shows logged in to github.com as `splashd1`, token
+  scopes `gist, read:org, repo`.
+- Local git identity and credential helper are now correctly
+  configured for this repo — future pushes should just work without
+  re-auth.
+- Working tree clean; nothing else changed this session.
+
+---
+
 # Session notes — 2026-07-12 (build verification + --memorable)
 
 ## What happened
