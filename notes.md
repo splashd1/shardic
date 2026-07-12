@@ -1,3 +1,49 @@
+# Session notes — 2026-07-11 (shardic-prime GUI)
+
+## What happened
+
+Added GUI support for shardic-prime (follow-up to the prior entry,
+which shipped it CLI-only). `vault_gui.py` now has a third top-level
+tab, "Shardic-Prime", containing its own Create/Recover sub-tabs
+(`CreatePrimeTab`/`RecoverPrimeTab`) built as an inner `ttk.Notebook`
+inside a `ShardicPrimeTab` container. They drive `vault_core_prime`
+the same way the CLI scripts do, reusing the existing
+background-thread + log-queue pattern from `CreateTab`/`RecoverTab`
+verbatim (no changes to the base tabs). Recover's codeword entry
+fields accept codewords in any order, matching the CLI's behavior —
+which one is the prime trustee's is only discovered once it decrypts.
+
+Verified by actually building and rendering the widget tree under a
+real Tk `mainloop()` (not just a syntax check), then driving a full
+create → recover cycle through the real button handlers
+(`on_create`/`on_recover`) with two different pool-codeword subsets,
+confirming both interchangeability and correct recovery end-to-end.
+An initial test attempt using manual `root.update()` polling instead
+of `mainloop()` threw `RuntimeError: main thread is not in main loop`
+from the worker thread's `self.after(...)` callback — a test-harness
+artifact (Tkinter's cross-thread `after()` needs a real mainloop
+running), not an app bug; the actual crypto work had already
+completed correctly in both runs regardless.
+
+README updated: GUI section now documents three tabs; the file
+listing no longer says shardic-prime is CLI-only.
+
+Committed and pushed as `870915d`.
+
+## State at end of session
+
+- Working tree clean, `870915d` pushed to `origin/main`.
+- shardic-prime now has full parity between CLI and GUI frontends.
+
+## Possibly worth following up
+
+- Still no automated test suite for either scheme — all verification
+  (base scheme originally, shardic-prime CLI, shardic-prime GUI) has
+  been manual/scripted-ad-hoc in-session. Worth a real test suite if
+  this keeps growing.
+
+---
+
 # Session notes — 2026-07-11 (shardic-prime)
 
 ## What happened
