@@ -70,7 +70,7 @@ government and business scenarios.
 - `build_appimage.sh` — builds standalone Linux binaries + `.AppImage` packages (CLI and GUI)
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
 - `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
-- `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. CLI-only for now (no GUI tab yet).
+- `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. Available both as CLI scripts and as a "Shardic-Prime" tab (with its own Create/Recover sub-tabs) in `vault_gui.py`.
 
 ## Requirements (running from source)
 ```
@@ -179,7 +179,7 @@ they generate, with or without `--strong-words`.
 ```
 python3 vault_gui.py
 ```
-Two tabs:
+Three tabs:
 - **Create Vault** — pick a file/folder, fill in trustee count,
   threshold, codeword length/count, a "Strong words" checkbox (see
   `--strong-words` above), output folder, and a KDF option (Auto /
@@ -191,6 +191,11 @@ Two tabs:
   Info" to see how many codewords are needed; that many password-style
   entry fields appear automatically. Fill in the codewords, pick an
   output folder, click Recover.
+- **Shardic-Prime** — the mandatory-prime-trustee variant (see below),
+  as its own Create/Recover sub-tabs mirroring the two above. Trustee
+  count (T) and threshold (D) here include the prime trustee; on
+  Recover, codewords can be entered in any order, since which one
+  turns out to be the prime trustee's is only known once it decrypts.
 
 The GUI runs the actual crypto work on a background thread so the
 window stays responsive, and streams log lines back to the main thread
