@@ -2,18 +2,33 @@
 wordgen.py
 
 Generates the human-typeable codeword(s) used to protect each Shamir
-share. Two modes:
+share. Three modes:
 
-  * dictionary mode: if --dictionary is supplied, words of exactly
-    length N are pulled from that file (one word per line).
-  * synthetic mode (default): pronounceable random words of exact
-    length N are generated from a consonant/vowel pattern. This is
-    used automatically when no dictionary is given, and generally
-    provides *far* more candidates per length than a natural-language
-    dictionary does -- a real dictionary filtered to, say, 6-letter
-    words might only have a few hundred entries (~8-9 bits of
-    entropy), whereas the synthetic generator below has on the order
-    of 26 * 5 * 21 * 5 * 21 ... combinations depending on length.
+  * memorable mode (--memorable, or the default when --word-length is
+    omitted): whole, real words pulled from a dictionary -- the
+    bundled EFF long wordlist unless --dictionary overrides it -- with
+    no length filtering, case randomization, or digit suffixes. This
+    optimizes for a trustee actually being able to *recall* their
+    codeword instead of writing it down, at the same (or better)
+    entropy as the other modes: real words engage semantic memory in a
+    way random syllables and mixed-case/digit noise don't, so the
+    entropy-per-character tradeoff that favors synthetic mode below
+    doesn't translate into an equivalent memorability advantage. See
+    bundled_memorable_wordlist() / eff_wordlist_words.py.
+  * dictionary mode (--dictionary + --word-length): words of exactly
+    length N are pulled from that file (one word per line). Useful if
+    you want every codeword the same visible length/shape.
+  * synthetic mode (--word-length alone, no --dictionary): pronounceable
+    random words of exact length N are generated from a
+    consonant/vowel pattern. Provides *far* more candidates per length
+    than a natural-language dictionary does -- a real dictionary
+    filtered to, say, 6-letter words might only have a few hundred
+    entries (~8-9 bits of entropy), whereas the synthetic generator
+    below has on the order of 26 * 5 * 21 * 5 * 21 ... combinations
+    depending on length. Denser per character, but the syllables don't
+    mean anything, so they're harder to actually remember -- prefer
+    memorable mode unless you specifically want that density (e.g.
+    codewords are stored, not memorized).
 
 Security note: whichever mode you use, a single short word is weak
 entropy on its own. Use --word-count > 1 to concatenate multiple
@@ -50,18 +65,38 @@ _CONSONANTS = "bcdfghjklmnpqrstvwxyz"
 _DIGITS = "0123456789"
 
 
-def load_dictionary(path: str, length: int):
+def load_dictionary(path: str, length: int | None = None):
+    """Load candidate words from `path`, one per line. If `length` is
+    given, only words of exactly that length are kept (the fixed-length
+    codeword mode); if it's None, every alphabetic word is kept
+    regardless of length (the `--memorable` mode uses this -- real
+    words are memorable at whatever length they naturally are, and
+    length-filtering a dictionary down to one length throws away most
+    of its candidates for no security benefit)."""
     words = []
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             w = line.strip().lower()
-            if len(w) == length and w.isalpha():
-                words.append(w)
+            if not w.isalpha():
+                continue
+            if length is not None and len(w) != length:
+                continue
+            words.append(w)
     if not words:
-        raise ValueError(
-            f"No words of length {length} found in dictionary file: {path}"
-        )
+        detail = f"of length {length} " if length is not None else ""
+        raise ValueError(f"No words {detail}found in dictionary file: {path}")
     return words
+
+
+def bundled_memorable_wordlist() -> list[str]:
+    """The default word source for --memorable mode: the EFF long
+    wordlist (7,772 whole, real, unfiltered-by-length words), embedded
+    in eff_wordlist_words.py rather than read from
+    wordlists/eff_large_wordlist.txt at runtime -- see that module's
+    docstring for why (PyInstaller onefile builds don't bundle loose
+    data files automatically, but do bundle any imported .py module)."""
+    from eff_wordlist_words import WORDS
+    return list(WORDS)
 
 
 def synthetic_word(length: int, randomize_case: bool = False) -> str:

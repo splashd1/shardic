@@ -37,7 +37,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from gf256_sss_prime import split_secret_with_prime, reconstruct_secret_with_prime
-from wordgen import estimate_word_entropy_bits, load_dictionary, pick_words
+from wordgen import estimate_word_entropy_bits, load_dictionary, pick_words, bundled_memorable_wordlist
 import kdf as kdfmod
 import krypt_container
 import vault_core as base
@@ -60,7 +60,7 @@ def create_vault_prime(
     input_path: str,
     trustees: int,
     threshold: int,
-    word_length: int,
+    word_length: int | None,
     word_count: int = 1,
     dictionary_path: str | None = None,
     outdir: str | None = None,
@@ -89,7 +89,7 @@ def create_vault_prime(
         raise ValueError("threshold (D) cannot exceed trustees (T)")
     if not (2 <= trustees <= 255):
         raise ValueError("trustees (T) must be between 2 and 255")
-    if word_length < 3:
+    if word_length is not None and word_length < 3:
         raise ValueError("word length should be at least 3")
     if not os.path.exists(input_path):
         raise ValueError(f"input path not found: {input_path}")
@@ -105,11 +105,15 @@ def create_vault_prime(
     words_dir = os.path.join(outdir, "trustee_words")
     os.makedirs(words_dir, exist_ok=True)
 
-    dictionary_words = None
-    if dictionary_path:
+    if word_length is None:
+        dictionary_words = load_dictionary(dictionary_path, None) if dictionary_path else bundled_memorable_wordlist()
+        source = dictionary_path or "the bundled EFF wordlist"
+        log(f"Memorable mode: loaded {len(dictionary_words)} whole, real candidate words from {source}")
+    elif dictionary_path:
         dictionary_words = load_dictionary(dictionary_path, word_length)
         log(f"Loaded {len(dictionary_words)} candidate words of length {word_length} from {dictionary_path}")
     else:
+        dictionary_words = None
         log("No dictionary supplied; using synthetic pronounceable words.")
 
     entropy_bits = estimate_word_entropy_bits(

@@ -29,20 +29,17 @@ participated in each recovery.
 splits access to a password manager's master vault among five
 relatives (`T=5`, `D=3`) — but unlike the infrastructure case above,
 each trustee needs to actually *memorize* their codeword rather than
-store a file; nobody wants it written on a sticky note. Passing the
-bundled EFF long wordlist (`wordlists/eff_large_wordlist.txt` — see
-below) with `--dictionary wordlists/eff_large_wordlist.txt
---word-length 8 --word-count 5` builds each codeword out of real,
-pronounceable words instead of synthetic strings — the classic
-diceware approach, much easier to commit to memory and recall
-correctly than an equivalent-strength random string. Since
-`load_dictionary()` only pulls words of exactly `--word-length`
-characters, pick a length with good coverage in the list (8 characters
-has the most candidates, ~1,780, of any length in this wordlist) so
-the usable pool — and therefore entropy — stays large; a real
-wordlist carries fewer bits per word than the synthetic generator,
-which is exactly why word count matters more here — see "Entropy of
-the codewords" below.
+store a file; nobody wants it written on a sticky note. This is
+`--memorable` mode — in fact it's the default, so just omitting
+`--word-length` gets it: `python3 vault_create.py --input ...
+--trustees 5 --threshold 3` builds each codeword out of whole, real
+words from the bundled EFF long wordlist instead of synthetic
+strings — the classic diceware approach, much easier to commit to
+memory and recall correctly than an equivalent-strength random string.
+Unlike the fixed-length `--dictionary` mode, memorable mode doesn't
+filter the wordlist down to one length, so it draws from the full
+7,772-word pool (~12.9 bits/word) rather than whatever subset happens
+to share one length — see "Codeword modes" below for the full picture.
 
 These two are just illustrations — see [Other potential use
 cases](#other-potential-use-cases) below for a broader list spanning
@@ -54,19 +51,28 @@ government and business scenarios.
 - `vault_gui.py` — GUI (Tkinter): same two operations as tabs in a windowed app, with form fields instead of flags
 - `vault_core.py` — shared library: the actual encrypt/split and match/reconstruct/decrypt logic; both CLIs and the GUI call this, so there's exactly one implementation of the crypto behind three frontends
 - `gf256_sss.py` — shared library: byte-wise Shamir's Secret Sharing over GF(256)
-- `wordgen.py` — shared library: codeword generation (synthetic or dictionary-based)
+- `wordgen.py` — shared library: codeword generation (memorable, dictionary, or synthetic)
 - `kdf.py` — shared library: key derivation (PBKDF2 or Argon2id), self-describing via metadata
 - `krypt_container.py` — shared library: the single-file `.krypt` container format
 - `wordlists/eff_large_wordlist.txt` — the EFF long wordlist (7,776
-  words, one per line), for `--dictionary`-based diceware-style
-  codewords; see "Example: diceware-style memorable codewords" above.
-  Published by the Electronic Frontier Foundation
+  words, one per line), source-of-truth copy for `--dictionary`-based
+  diceware-style codewords; see "Example: diceware-style memorable
+  codewords" above. Published by the Electronic Frontier Foundation
   (<https://www.eff.org/dice>) under CC BY 3.0 US; reformatted here
   from EFF's original tab-separated `<dice-roll>\t<word>` file to one
   word per line, since that's the format `wordgen.load_dictionary()`
   expects. A handful of entries with punctuation (`drop-down`,
-  `felt-tip`, `t-shirt`, `yo-yo`) get silently excluded by
-  `load_dictionary()`'s `isalpha()` filter — expected, negligible.
+  `felt-tip`, `t-shirt`, `yo-yo`) get silently excluded by the
+  `isalpha()` filter both this and the module below apply — expected,
+  negligible.
+- `eff_wordlist_words.py` — the same wordlist, embedded as a plain
+  Python tuple, used by `--memorable` mode (`wordgen.bundled_memorable_wordlist()`)
+  instead of reading the `.txt` file at runtime. This is what actually
+  ships in the standalone `.exe`/`.AppImage` builds below — PyInstaller
+  onefile bundles only get built by following Python imports, not by
+  picking up loose data files like `wordlists/*.txt`, so a real .py
+  module is what makes memorable mode work in the packaged binaries
+  without extra `--add-data` wiring in `build_appimage.sh`/`build_windows.bat`.
 - `build_appimage.sh` — builds standalone Linux binaries + `.AppImage` packages (CLI and GUI)
 - `build_windows.bat` — builds standalone Windows `.exe` files (run on Windows; see below)
 - `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
@@ -104,19 +110,26 @@ argon2-cffi" message if a vault needs it and it's missing.
 
 ## Quick start (CLI)
 
-Create a vault from a file or directory, 5 trustees, 3 needed to recover,
-8-character codewords, 2 words per trustee for entropy margin:
+Create a vault from a file or directory, 5 trustees, 3 needed to recover.
+Leaving out `--word-length` gets you the default: **memorable mode**
+(`--memorable`) — whole, real words from the bundled EFF wordlist, 5
+per trustee, ~65 bits of entropy, meant to actually be remembered
+rather than written down:
 ```
 python3 vault_create.py --input ./my_directory \
     --trustees 5 --threshold 3 \
-    --word-length 8 --word-count 2 \
     --outdir vault_out
 ```
 Outputs into `vault_out/`:
 - `<random16>.krypt` — **single file** containing both the metadata
   (everything needed to recover, except the codewords) and the encrypted
   archive. This is the one file you back up or share.
-- `trustee_words/trustee_1.txt` ... `trustee_5.txt` — one codeword each
+- `trustee_words/trustee_1.txt` ... `trustee_5.txt` — one codeword each,
+  e.g. `desktop-anaconda-upstroke-paralegal-survivor`
+
+Pass `--word-length` (e.g. `--word-length 8 --word-count 2`) to get the
+old fixed-length behavior instead — see "Codeword modes" below for the
+full picture (memorable / dictionary / synthetic / `--strong-words`).
 
 Distribute each `trustee_N.txt` to one trustee out-of-band, then delete
 them from this machine. The `.krypt` file can be stored, emailed, or
@@ -146,33 +159,62 @@ automatically (and still understands older split-file vaults — see below).
 --argon2-parallelism N           # default 4
 ```
 
-### Stronger codewords (`--strong-words`)
+### Codeword modes
 
-```
-python3 vault_create.py --input ./my_directory \
-    --trustees 5 --threshold 3 \
-    --word-length 8 --word-count 2 --strong-words \
-    --outdir vault_out
-```
-Opt-in, off by default. Randomizes the case of each generated letter
-and appends a 3-digit suffix to every word, e.g. `bAfOgE472` instead
-of `bafoge`. Same length/word-count settings, meaningfully more
-entropy:
-- Randomized case doubles the alphabet at every letter position — +1
-  bit/char for free, no extra length.
-- The digit suffix adds ~3.32 bits/char, which is denser than the
-  vowel slots in the plain alternating-consonant-vowel scheme (the
-  actual entropy bottleneck — see "Entropy of the codewords" below).
+Four ways to generate codewords, all going through the same
+KDF+AES-GCM per-share protection and all reported with an estimated
+combinatorial-entropy figure (in bits) so you can compare them
+directly. Pick one — `--memorable` and `--strong-words` are mutually
+exclusive, since they optimize for opposite things.
 
-Only turn this on if codewords will be typed or copy-pasted rather
-than read aloud or handwritten — case is the first thing lost in
-dictation or sloppy transcription. It's purely a generation-time
-choice (recovery just tries whatever string a trustee enters against
-each share's KDF+AES-GCM check), so it doesn't touch the `.krypt`
-format and can't break compatibility with codewords generated before
-this flag existed. Both `vault_create.py` and the GUI log/record an
-estimated combinatorial-entropy figure (in bits) for the codewords
-they generate, with or without `--strong-words`.
+- **Memorable (`--memorable`, and the default whenever `--word-length`
+  is omitted)**: whole, real dictionary words — the bundled EFF long
+  wordlist (`eff_wordlist_words.py`, 7,772 words) unless `--dictionary`
+  points somewhere else — with no length filtering, no case
+  randomization, no digit suffixes. Default word count is 5
+  (~65 bits with the bundled list). This is the recommended default:
+  real words engage semantic memory in a way random syllables and
+  mixed-case/digit noise don't, so a trustee has a real shot at
+  recalling their codeword without writing it down. Passing
+  `--word-length` always opts back into one of the modes below (fully
+  backward compatible with anything that already specified it).
+  ```
+  python3 vault_create.py --input ./my_directory \
+      --trustees 5 --threshold 3 --memorable --word-count 6 \
+      --outdir vault_out
+  ```
+- **Dictionary (`--dictionary FILE --word-length N`)**: words of
+  exactly length N pulled from a file you supply. Useful if you want
+  every codeword the same visible length/shape; costs you most of the
+  dictionary's candidates to the length filter, so it's usually lower
+  entropy per word than memorable mode off the same file.
+- **Synthetic (`--word-length N`, no `--dictionary`)**: the default
+  before this scheme existed — pronounceable random syllables
+  (alternating consonant/vowel) of exact length N. Denser
+  bits-per-character than real words, but the syllables don't mean
+  anything, so they're harder to actually remember. Prefer memorable
+  mode unless codewords are going to be stored rather than memorized.
+- **`--strong-words`** (stacks with dictionary/synthetic modes, not
+  memorable mode): randomizes the case of each generated letter and
+  appends a 3-digit suffix to every word, e.g. `bAfOgE472` instead of
+  `bafoge`. Same length/word-count settings, meaningfully more
+  entropy — randomized case is +1 bit/char for free (doubles the
+  alphabet at every position), the digit suffix adds ~3.32 bits/char.
+  Only turn this on if codewords will be typed or copy-pasted rather
+  than read aloud or handwritten — case is the first thing lost in
+  dictation or sloppy transcription.
+  ```
+  python3 vault_create.py --input ./my_directory \
+      --trustees 5 --threshold 3 \
+      --word-length 8 --word-count 2 --strong-words \
+      --outdir vault_out
+  ```
+
+All of this is purely a generation-time choice — recovery just tries
+whatever string a trustee enters against each share's KDF+AES-GCM
+check (see `vault_core.try_match_word`), so none of it touches the
+`.krypt` format or breaks compatibility with codewords generated
+under a different mode before these flags existed.
 
 ## GUI
 
@@ -181,21 +223,27 @@ python3 vault_gui.py
 ```
 Three tabs:
 - **Create Vault** — pick a file/folder, fill in trustee count,
-  threshold, codeword length/count, a "Strong words" checkbox (see
-  `--strong-words` above), output folder, and a KDF option (Auto /
-  Argon2id / PBKDF2), then click Create. Progress and log output
-  stream into the window, including an estimated codeword-entropy
-  figure; a completion dialog shows where the `.krypt` file and
-  trustee codeword files landed.
+  threshold, a "Memorable codewords" checkbox (checked by default —
+  see `--memorable` under "Codeword modes" above), codeword
+  length/count, a "Strong words" checkbox (see `--strong-words`
+  above), output folder, and a KDF option (Auto / Argon2id / PBKDF2),
+  then click Create. Memorable and Strong words are mutually
+  exclusive — checking one unchecks and disables the other, and the
+  codeword-length field is disabled while Memorable is checked, since
+  it's ignored in that mode. Progress and log output stream into the
+  window, including an estimated codeword-entropy figure; a completion
+  dialog shows where the `.krypt` file and trustee codeword files
+  landed.
 - **Recover Vault** — pick the `.krypt` file and click "Load Vault
   Info" to see how many codewords are needed; that many password-style
   entry fields appear automatically. Fill in the codewords, pick an
   output folder, click Recover.
 - **Shardic-Prime** — the mandatory-prime-trustee variant (see below),
-  as its own Create/Recover sub-tabs mirroring the two above. Trustee
-  count (T) and threshold (D) here include the prime trustee; on
-  Recover, codewords can be entered in any order, since which one
-  turns out to be the prime trustee's is only known once it decrypts.
+  as its own Create/Recover sub-tabs mirroring the two above (Create
+  has the same Memorable/Strong-words checkboxes). Trustee count (T)
+  and threshold (D) here include the prime trustee; on Recover,
+  codewords can be entered in any order, since which one turns out to
+  be the prime trustee's is only known once it decrypts.
 
 The GUI runs the actual crypto work on a background thread so the
 window stays responsive, and streams log lines back to the main thread
@@ -390,23 +438,26 @@ plain `vault_create.py` output with plain `vault_recover.py`.
 ## Things worth knowing before you rely on this
 
 - **Entropy of the codewords is the real security bottleneck.**
-  A single N-character word — from a real dictionary or the built-in
-  synthetic generator — is much weaker than the AES-256/Shamir math
-  around it. A natural-language dictionary filtered to a fixed length
-  is often only hundreds to low-thousands of candidates (~8–11 bits).
-  The built-in synthetic generator (alternating consonant/vowel,
-  default when you don't pass `--dictionary`) has a much larger space
-  per length, but you should still set `--word-count 2` or higher —
-  each extra word roughly multiplies the search space, so 2–3 words
-  gets you into a realistic security range. Treat `--word-length`
-  as "how long/typeable is each word" and `--word-count` as "how much
-  entropy do I actually want." `--strong-words` (see above) raises the
-  bits-per-character of each word without adding length, if codewords
-  will be typed/pasted rather than spoken or handwritten. Note that
-  because each share is cracked independently (see "Indexing without
-  a mapping table" above), a higher threshold `D` does *not* let you
-  get away with weaker codewords — every codeword individually needs
-  to carry real entropy, regardless of `T`.
+  A single word — from `--memorable` mode, a fixed-length `--dictionary`,
+  or the built-in synthetic generator — is much weaker than the
+  AES-256/Shamir math around it on its own. `--memorable` mode's
+  unfiltered 7,772-word pool (~12.9 bits/word) is the strongest
+  per-word source of the three; a `--dictionary` filtered to a fixed
+  `--word-length` is usually much smaller (often hundreds to
+  low-thousands of candidates, ~8–11 bits/word), and the synthetic
+  generator (`--word-length` with no `--dictionary`) has a larger space
+  per length than that but no semantic meaning to help recall it. In
+  every mode, `--word-count` is what actually gets you into a real
+  security range — each extra word roughly multiplies the search
+  space, so aim for the default of 5 in memorable mode, or 2–3+ in the
+  other modes. `--strong-words` (see "Codeword modes" above, only
+  available outside memorable mode) raises the bits-per-character of
+  each word without adding length, if codewords will be typed/pasted
+  rather than spoken or handwritten. Note that because each share is
+  cracked independently (see "Indexing without a mapping table"
+  above), a higher threshold `D` does *not* let you get away with
+  weaker codewords — every codeword individually needs to carry real
+  entropy, regardless of `T`.
 - **Argon2id vs. PBKDF2**: Argon2id's memory-hardness is what raises
   the cost of an attacker running many parallel guesses on GPUs/ASICs
   against a leaked `.krypt` file — PBKDF2 is cheap to parallelize by
