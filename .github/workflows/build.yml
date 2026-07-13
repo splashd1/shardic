@@ -52,6 +52,8 @@ jobs:
         run: |
           pyinstaller --onefile --name vault-create vault_create.py
           pyinstaller --onefile --name vault-recover vault_recover.py
+          pyinstaller --onefile --name vault-create-prime vault_create_prime.py
+          pyinstaller --onefile --name vault-recover-prime vault_recover_prime.py
       - uses: actions/upload-artifact@v4
         with:
           name: VaultTool-windows-x64
@@ -59,6 +61,8 @@ jobs:
             dist/VaultTool-GUI.exe
             dist/vault-create.exe
             dist/vault-recover.exe
+            dist/vault-create-prime.exe
+            dist/vault-recover-prime.exe
 
   linux:
     runs-on: ubuntu-latest
@@ -79,6 +83,8 @@ jobs:
         run: |
           pyinstaller --onefile --name vault-create vault_create.py
           pyinstaller --onefile --name vault-recover vault_recover.py
+          pyinstaller --onefile --name vault-create-prime vault_create_prime.py
+          pyinstaller --onefile --name vault-recover-prime vault_recover_prime.py
       - name: Package AppImages (CLI + GUI)
         run: |
           chmod +x build_appimage.sh
@@ -90,6 +96,8 @@ jobs:
             dist/VaultTool-GUI
             dist/vault-create
             dist/vault-recover
+            dist/vault-create-prime
+            dist/vault-recover-prime
             dist/VaultTool-x86_64.AppImage
             dist/VaultToolGUI-x86_64.AppImage
 

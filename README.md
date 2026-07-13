@@ -306,8 +306,9 @@ with "Add to PATH" checked), then run:
 build_windows.bat
 ```
 Output in `dist\`:
-- `VaultTool-GUI.exe` — double-click, opens the windowed GUI
+- `VaultTool-GUI.exe` — double-click, opens the windowed GUI (includes the Shardic-Prime tab)
 - `vault-create.exe`, `vault-recover.exe` — CLI equivalents
+- `vault-create-prime.exe`, `vault-recover-prime.exe` — shardic-prime CLI equivalents
 
 These run standalone on any Windows 10/11 x64 machine: no Python, no
 pip packages, nothing else needs installing there. (I built and tested

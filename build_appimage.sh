@@ -2,8 +2,9 @@
 # build_appimage.sh
 #
 # Builds standalone Linux binaries for the CLI (vault_create.py,
-# vault_recover.py) and GUI (vault_gui.py) programs via PyInstaller,
-# and packages each into a single-file .AppImage using appimagetool.
+# vault_recover.py, vault_create_prime.py, vault_recover_prime.py) and
+# GUI (vault_gui.py) programs via PyInstaller, and packages each into a
+# single-file .AppImage using appimagetool.
 # The resulting .AppImages need nothing installed on the target
 # machine -- not Python, not tkinter, not `cryptography`, not
 # `argon2-cffi`.
@@ -18,7 +19,7 @@
 #   - all the project .py files in the same directory as this script
 #
 # Output:
-#   dist/VaultTool-x86_64.AppImage       (CLI: create/recover subcommands)
+#   dist/VaultTool-x86_64.AppImage       (CLI: create/recover/create-prime/recover-prime subcommands)
 #   dist/VaultToolGUI-x86_64.AppImage    (GUI)
 
 set -euo pipefail
@@ -56,14 +57,18 @@ mkdir -p dist
 # CLI AppImage: vault-create + vault-recover, dispatched by subcommand
 # ---------------------------------------------------------------------------
 echo "[*] Building CLI binaries with PyInstaller ..."
-pyinstaller --onefile --name vault-create  --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_create.py
-pyinstaller --onefile --name vault-recover --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_recover.py
+pyinstaller --onefile --name vault-create        --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_create.py
+pyinstaller --onefile --name vault-recover        --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_recover.py
+pyinstaller --onefile --name vault-create-prime   --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_create_prime.py
+pyinstaller --onefile --name vault-recover-prime  --distpath "$WORKDIR/bin" --workpath "$WORKDIR/build" --specpath "$WORKDIR" vault_recover_prime.py
 
 echo "[*] Assembling CLI AppDir ..."
 CLI_APPDIR="$WORKDIR/VaultTool.AppDir"
 mkdir -p "$CLI_APPDIR/usr/bin"
-cp "$WORKDIR/bin/vault-create"  "$CLI_APPDIR/usr/bin/"
-cp "$WORKDIR/bin/vault-recover" "$CLI_APPDIR/usr/bin/"
+cp "$WORKDIR/bin/vault-create"         "$CLI_APPDIR/usr/bin/"
+cp "$WORKDIR/bin/vault-recover"        "$CLI_APPDIR/usr/bin/"
+cp "$WORKDIR/bin/vault-create-prime"   "$CLI_APPDIR/usr/bin/"
+cp "$WORKDIR/bin/vault-recover-prime"  "$CLI_APPDIR/usr/bin/"
 chmod +x "$CLI_APPDIR/usr/bin/"*
 cp "$ICON_PNG" "$CLI_APPDIR/vaulttool.png"
 
@@ -94,18 +99,26 @@ case "$CMD" in
   recover|decrypt)
     exec "$HERE/usr/bin/vault-recover" "$@"
     ;;
+  create-prime)
+    exec "$HERE/usr/bin/vault-create-prime" "$@"
+    ;;
+  recover-prime)
+    exec "$HERE/usr/bin/vault-recover-prime" "$@"
+    ;;
   ""|-h|--help)
     echo "VaultTool - threshold-recoverable encrypted vault"
     echo
     echo "Usage:"
     echo "  $SELF_NAME create  --input PATH --trustees T --threshold D --word-length N [options]"
     echo "  $SELF_NAME recover VAULT.krypt [options]"
+    echo "  $SELF_NAME create-prime  --input PATH --trustees T --threshold D --word-length N [options]"
+    echo "  $SELF_NAME recover-prime VAULT.krypt [options]"
     echo
-    echo "Run '$SELF_NAME create --help' or '$SELF_NAME recover --help' for full option lists."
+    echo "Run '$SELF_NAME create --help', '$SELF_NAME recover --help', etc. for full option lists."
     ;;
   *)
     echo "Unknown command: $CMD" >&2
-    echo "Expected 'create' or 'recover'. Run with --help for usage." >&2
+    echo "Expected 'create', 'recover', 'create-prime', or 'recover-prime'. Run with --help for usage." >&2
     exit 1
     ;;
 esac
@@ -153,5 +166,5 @@ rm -f dist/VaultToolGUI-x86_64.AppImage
 
 echo
 echo "[+] Done:"
-echo "    dist/VaultTool-x86_64.AppImage      ./dist/VaultTool-x86_64.AppImage create|recover ..."
+echo "    dist/VaultTool-x86_64.AppImage      ./dist/VaultTool-x86_64.AppImage create|recover|create-prime|recover-prime ..."
 echo "    dist/VaultToolGUI-x86_64.AppImage   ./dist/VaultToolGUI-x86_64.AppImage  (double-click, or run it)"
