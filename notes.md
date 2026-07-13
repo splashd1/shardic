@@ -1,3 +1,54 @@
+# Session notes — 2026-07-13 (v1.2.0 release + docx files added)
+
+## What happened
+
+Direct continuation of the prime-CLI build-parity work in the entry
+below.
+
+1. **Published a real GitHub Release with the new binaries.** User
+   noticed the prime-CLI executables weren't visible on GitHub — that
+   was expected, since the prior push only produced workflow-run
+   artifacts (attached to one CI run, not a permanent page), not a
+   Release. Pushed tag `v1.2.0` (confirmed with the user first), which
+   triggered the full build+release pipeline: `windows` (1m34s),
+   `linux` (3m31s), and `release` (30s) all passed. Verified via `gh
+   release view v1.2.0` that all 12 assets are attached and the
+   release is published (not a draft): `vault-create`/`-recover` (+
+   `.exe`), `vault-create`/`-recover-prime` (+ `.exe`), `VaultTool-GUI`
+   (+ `.exe`), and both AppImages.
+
+2. **Pushed both white-paper `.docx` files to the repo**, reversing an
+   earlier-session decision to keep them untracked — user explicitly
+   asked for this now. Committed as `6b1066d`:
+   `docs/shardic_white_paper.v.1.2.docx` (the original vetted source)
+   and `docs/shardic_white_paper.v.1.2.1.docx` (the pandoc round-trip
+   from a prior session, kept for reference).
+
+3. **Saved a new standing memory** (cross-session, not part of this
+   repo): whenever a new markdown *documentation* file gets created in
+   this repo going forward (design docs, white papers — not routine
+   files like README/notes.md/CLAUDE.md), prompt the user about
+   generating a pandoc `.docx` version alongside it, rather than doing
+   it silently or not at all.
+
+## State at end of session
+
+- `origin/main` tip is `6b1066d`. Working tree fully clean — no
+  untracked files remain (the two docx files that had been sitting
+  untracked all session are now committed).
+- GitHub Release `v1.2.0` is live at
+  `github.com/splashd1/shardic/releases/tag/v1.2.0` with all 12
+  binaries attached, including the first-ever published prime-CLI
+  executables (Windows `.exe` and Linux).
+
+## Possibly worth following up
+
+- Same as the entry below: the Windows prime-CLI `.exe`s have only
+  been build-verified via CI, never hand-run on a real Windows box.
+- Still no automated test suite (carried over from every prior entry).
+
+---
+
 # Session notes — 2026-07-13 (Windows build walkthrough + prime CLI parity)
 
 ## What happened
