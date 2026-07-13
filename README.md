@@ -78,7 +78,7 @@ government and business scenarios.
 - `.github/workflows/build.yml` — GitHub Actions workflow that builds Windows + Linux executables in CI, and publishes a GitHub Release with all of them attached when a `v*` tag is pushed
 - `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. Available both as CLI scripts and as a "Shardic-Prime" tab (with its own Create/Recover sub-tabs) in `vault_gui.py`.
 - `docs/pubkey-envelope-plugin.md` — **shardic-envelope**, a design proposal (not yet implemented) for a bolt-on plugin that wraps each trustee's codeword under their own public key, trading memorability for arbitrarily larger/higher-entropy codewords protected by a keypair instead of memory.
-- [`docs/whitepaper.md`](docs/whitepaper.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
+- [`docs/shardic_whitepaper.1.2.1.md`](docs/shardic_whitepaper.1.2.1.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
 ```
