@@ -1,3 +1,89 @@
+# Session notes — 2026-07-13 (attribution re-set + full history rewrite)
+
+## What happened
+
+1. **Found the custom commit-attribution setting had gone missing.**
+   User asked to be reminded which settings.json field controlled the
+   custom commit-trailer wording from an earlier session (per
+   `notes.md`: `attribution.commit`/`attribution.pr` in
+   `~/.claude/settings.json`, previously set to "Fine-tuned, vetted,
+   and, in some cases, supplemented by Claude Sonnet 5" instead of the
+   default `Co-Authored-By: Claude Sonnet 5`). Checked the live file —
+   the key was gone entirely (back to just `env`/`permissions`), which
+   explains why every commit this session up to this point still
+   carried the default trailer. Re-added both fields with the original
+   wording via the `update-config` skill.
+
+2. **User asked to make all code/docs carrying attribution reflect the
+   change.** Grepped tracked files for the literal old trailer text
+   and found two hits beyond git history: `.claude/skills/shardic-
+   sync/SKILL.md` (hardcoded the old trailer in its commit template —
+   fixed, since it drives every future auto-sync commit) and
+   `notes.md` itself (left untouched — those are historical narrative
+   about *when* the setting was set, not a live template, so rewriting
+   them would misrepresent the record).
+
+3. **Rewrote the full commit history of `main`** (all 39 commits) to
+   replace the old `Co-Authored-By: Claude Sonnet 5
+   <noreply@anthropic.com>` trailer with the new wording, after
+   explicitly asking the user whether to touch published history at
+   all (flagged the scope/risk first) and getting a clear "yes, rewrite
+   and force-push." Used `git filter-branch --msg-filter` with a `sed`
+   substitution (no `git-filter-repo` available on this machine),
+   tagged the pre-rewrite tip locally as a safety net, confirmed via
+   `git diff <old-tip> main --stat` that the rewrite produced an empty
+   diff (trees byte-identical, only commit-message trailers changed),
+   then force-pushed with `--force-with-lease`. Cleaned up the local
+   backup tag and `refs/original/refs/heads/main` afterward. New
+   `origin/main` tip: `8732286`.
+
+4. **Also fixed the earlier docx round-trip's missing images for
+   real**, redoing the pandoc conversion after converting
+   `whitepaper.md`'s raw HTML `<img>` tags to native markdown image
+   syntax (this was flagged as a possible follow-up in yesterday's
+   entry below, and got done properly this session) — committed as
+   `56d5cd1` (that hash itself later got a rewritten trailer as part
+   of item 3 above, so the content is unchanged but the hash referenced
+   in the prior entry no longer matches `origin/main`; use `git log
+   --grep` on the commit subject to find things post-rewrite instead of
+   trusting old hashes in this file).
+
+5. **Saved a standing memory** (not part of this repo — in Claude's
+   cross-session memory store) that this project doesn't need
+   confirmation before pandoc commands or git commands other than
+   `commit`/`push` — reduces friction for doc-conversion and
+   history-inspection work specifically; commit/push still get
+   confirmed as before.
+
+## State at end of session
+
+- `origin/main` tip is `8732286`. **Note: this session rewrote commit
+  hashes for the entire history** — any other local clone of this repo
+  (if one exists on another machine) is now diverged and will need
+  `git fetch && git reset --hard origin/main` (or a fresh clone) to
+  match; a plain `git pull` will fail or create a mess. Flag this to
+  the user if a second machine's session hits push/pull errors on this
+  repo.
+- `~/.claude/settings.json` (global, not part of this repo) has
+  `attribution.commit`/`attribution.pr` set correctly again.
+- Two untracked `.docx` files remain on disk in `docs/`
+  (`shardic_white_paper.v.1.2.docx`, the vetted original; `...v.1.2.1
+  .docx`, this session's round-trip experiment) — intentionally not
+  part of the repo per standing instruction.
+
+## Possibly worth following up
+
+- If a second machine has an old clone of this repo, its next
+  `/shardic-sync` or manual `git pull` will hit a non-fast-forward
+  error because of the history rewrite — be ready to walk through
+  `git fetch origin && git reset --hard origin/main` there (after
+  confirming no unpushed local work would be lost).
+- No functional/product code touched this session — attribution
+  plumbing + a docs fix only. Still no automated test suite (carried
+  over from every prior entry).
+
+---
+
 # Session notes — 2026-07-13 (docx round-trip, found+fixed an image bug)
 
 ## What happened
