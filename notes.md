@@ -1,3 +1,56 @@
+# Session notes — 2026-07-13 (docx round-trip, found+fixed an image bug)
+
+## What happened
+
+User asked, "just for grins," to convert `docs/whitepaper.md` back to
+a `.docx` (versioned `v.1.2.1`) using pandoc — a round-trip check
+against the earlier md→docx conversion from the previous session.
+
+First attempt (`pandoc whitepaper.md -f gfm -t docx`) produced a docx
+with all prose intact (verified word count via `pandoc -t plain | wc
+-w`) but **zero embedded images** — checked the docx's zip contents
+directly (`zipfile` on the `.docx`) and found no `word/media/*`
+entries at all. Root cause: `whitepaper.md`'s five diagrams were
+written as raw HTML `<img src="media/imageN.png" .../>` tags (an
+artifact of the original docx→md conversion last session). Pandoc
+passes raw HTML through unmodified for HTML targets, but silently
+drops it when converting to a non-HTML target like docx — so the
+images vanished with no error or placeholder.
+
+Fixed by converting all five `<img>` tags in `docs/whitepaper.md` to
+native markdown image syntax (`![](media/imageN.png)`), then re-ran
+the docx conversion — confirmed via the same `zipfile` check that all
+five images landed as `word/media/rIdNN.png` this time (file size
+170KB vs. the image-less 29KB from the first attempt). This also
+improves `whitepaper.md` itself as a side effect: proper markdown
+image syntax renders correctly on GitHub, where the raw HTML tags
+technically would too, but native syntax is the more idiomatic/robust
+choice for a doc meant to round-trip through other tools.
+
+Committed just the `.md` fix (`56d5cd1`) — both `.docx` files (the
+original v1.2 source and the new experimental v1.2.1 round-trip) stay
+untracked on disk, consistent with the standing instruction from last
+session to keep only the markdown derivative in the repo.
+
+## State at end of session
+
+- `origin/main` tip is `56d5cd1`. Working tree has two untracked docx
+  files (`docs/shardic_white_paper.v.1.2.docx`, `...v.1.2.1.docx`) —
+  intentionally not part of the repo, exploratory/reference artifacts
+  only.
+- `docs/whitepaper.md` now uses markdown image syntax throughout
+  instead of raw HTML `<img>` — worth keeping in mind if pasting
+  future edits back in from claude.ai or another docx export, since
+  that path is what reintroduced raw HTML img tags the first time.
+
+## Possibly worth following up
+
+- No functional/product code touched this session — pure docs
+  tooling. Still no automated test suite (carried over from every
+  prior entry).
+
+---
+
 # Session notes — 2026-07-13 (CLAUDE.md committed + white paper added)
 
 ## What happened
