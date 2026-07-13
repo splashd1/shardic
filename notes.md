@@ -1,3 +1,40 @@
+# Session notes — 2026-07-13 (whitepaper renamed)
+
+## What happened
+
+Renamed `docs/whitepaper.md` to `docs/shardic_whitepaper.1.2.1.md` per
+user request (`git mv`, preserving history), and updated the README
+link that pointed at the old path. No content changes.
+
+Hit a small process slip worth noting: the first commit attempt used
+`git add -A docs/shardic_whitepaper.1.2.1.md docs/whitepaper.md
+README.md` — the second pathspec (`docs/whitepaper.md`, the now-gone
+old path) failed with "did not match any files," and that silently
+left `README.md` unstaged too, so the rename got committed
+(`1d5ea84`) without the README link update. Caught it immediately via
+`git show --stat HEAD` right after, fixed with a follow-up commit
+(`2282145`) staging just `README.md`. **Lesson: after a multi-path
+`git add` where one pathspec errors, verify what actually got staged
+rather than assuming the valid paths went through anyway.**
+
+## State at end of session
+
+- `origin/main` tip is `2282145`. Working tree clean.
+- The white paper now lives at `docs/shardic_whitepaper.1.2.1.md`;
+  README's `docs/` file list links to the new path.
+
+## Possibly worth following up
+
+- If the white paper gets revised again, the `.1.2.1` version suffix
+  in the filename will need bumping too (nothing automatic ties it to
+  the docx version number) — worth remembering next time content
+  changes, not just the rename that happened this session.
+- Same carryover items as recent entries: no automated test suite;
+  Windows prime-CLI `.exe`s still only CI-verified, never hand-run on
+  real Windows.
+
+---
+
 # Session notes — 2026-07-13 (v1.2.1 release + doc path cleanup)
 
 ## What happened
