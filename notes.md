@@ -1,3 +1,66 @@
+# Session notes — 2026-07-13 (Windows build walkthrough + prime CLI parity)
+
+## What happened
+
+1. **Explained the Windows build path** in detail (dev environment
+   setup, tools, `build_windows.bat` walkthrough) — grounded in the
+   actual script contents rather than assumed, since this path had
+   never been run for real before today. Flagged along the way that
+   neither `build_windows.bat` nor `build_appimage.sh` nor CI built
+   standalone **shardic-prime CLI** executables (`vault_create_prime.py`
+   /`vault_recover_prime.py`) — only the base CLI and the GUI (which
+   already bundles the Prime tab).
+
+2. **Added prime CLI builds to all three build paths**, after the user
+   confirmed they wanted it everywhere for consistency, not just
+   Windows:
+   - `build_windows.bat`: two new `PyInstaller` calls producing
+     `vault-create-prime.exe`/`vault-recover-prime.exe`.
+   - `build_appimage.sh`: builds the same two prime binaries and folds
+     them into the existing single `VaultTool-x86_64.AppImage` as new
+     `create-prime`/`recover-prime` subcommands (extending the
+     existing `AppRun` dispatcher rather than making a third
+     AppImage), plus updated header comments/help text/final summary.
+   - `.github/workflows/build.yml`: added the matching `pyinstaller`
+     calls and artifact-upload paths to both the `windows` and `linux`
+     jobs.
+   - `README.md`: updated the documented Windows output file list to
+     include the two new `.exe`s.
+   - Verified `bash -n` on the shell script and a YAML parse on the
+     workflow file before committing.
+   - Committed as `43ab990` and pushed.
+
+3. **Watched the resulting CI run through to completion** (run
+   `29260362797`, triggered automatically by the push): both `windows`
+   and `linux` jobs passed in ~2.5–3 minutes each, `release` correctly
+   skipped (plain push to `main`, no tag). Confirmed via `gh api
+   .../artifacts` that both `VaultTool-windows-x64` and
+   `VaultTool-linux-x64` artifact bundles were produced. **This is the
+   first real confirmation that a Windows build actually succeeds for
+   the prime-CLI additions** — previously only the base-scheme Windows
+   build had ever been CI-verified.
+
+## State at end of session
+
+- `origin/main` tip is `43ab990`. Working tree clean except the two
+  intentionally-untracked `.docx` files under `docs/` (carried over
+  from a prior session, left alone).
+- All three build paths (Windows `.bat`, Linux `build_appimage.sh`,
+  CI for both platforms) now have full parity: GUI (bundles both
+  schemes), base CLI, and prime CLI executables everywhere.
+
+## Possibly worth following up
+
+- The Windows `.exe`s have now been CI-built successfully but still
+  only smoke-tested by build success + (for the base scheme, from an
+  earlier session) `strings`-based bundling checks — nobody has yet
+  actually *run* `vault-create-prime.exe`/`vault-recover-prime.exe` by
+  hand on a real Windows machine to confirm a create→recover round
+  trip works. Worth doing if a Windows machine becomes available.
+- Still no automated test suite (carried over from every prior entry).
+
+---
+
 # Session notes — 2026-07-13 (attribution re-set + full history rewrite)
 
 ## What happened
