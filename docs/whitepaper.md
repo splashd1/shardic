@@ -192,7 +192,7 @@ threshold/trustee counts does not substitute for it.
 [*] Split DEK into 5 shares, threshold 3
 [*] Wrote vault container: vault_out/ce28by1pn9z8wib2.krypt
 (11388 bytes)
-[+] Wrote 5 trustee codeword files to: vault_out/trustee_words/
+[+] Wrote 5 trustee codeword files to: vault_out/ce28by1pn9z8wib2_trustee_words/
 Distribute each trustee_N.txt to exactly one trustee (out
 of band, e.g. in person or over a channel they
 individually control), then DELETE these files from this
@@ -338,7 +338,7 @@ Every mode described in §4.2 — memorable, dictionary, synthetic — ultimatel
 
 As designed, the construction:
 
-- Operates strictly on the *output* of vault creation — the plaintext files in trustee_words/trustee_N.txt — rather than modifying vault_core.py itself, so the existing encrypt/split/KDF path is untouched and the base scheme's guarantees are unaffected.
+- Operates strictly on the *output* of vault creation — the plaintext files in `<random16>_trustee_words/trustee_N.txt` — rather than modifying vault_core.py itself, so the existing encrypt/split/KDF path is untouched and the base scheme's guarantees are unaffected.
 
 - Looks up each trustee's public key through a pluggable interface (get_public_key(trustee_id)) rather than a specific mandated directory or database, leaving credential storage as an integration choice.
 

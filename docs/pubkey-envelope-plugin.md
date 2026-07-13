@@ -4,7 +4,7 @@
 codebase yet — `vault_core.py`, `wordgen.py`, and the four CLI/GUI
 frontends are all unchanged by this document. This is a design for a
 **bolt-on plugin** that would operate entirely on the *output* of
-vault creation (the `trustee_words/trustee_N.txt` files), not a
+vault creation (the `<random16>_trustee_words/trustee_N.txt` files), not a
 modification to the encrypt/split/KDF logic described in the main
 [README](../README.md#how-the-design-works). It's written to be
 revised as the real implementation takes shape — treat the interfaces
@@ -39,7 +39,7 @@ tooling and habits for (password managers, hardware security keys,
 GPG/age identities), unlike memorizing five random words.
 
 This composes with either the base scheme or [shardic-prime](../README.md#shardic-prime-a-mandatory-prime-trustee-variant):
-the plugin only ever looks at `trustee_words/trustee_N.txt`-shaped
+the plugin only ever looks at `<random16>_trustee_words/trustee_N.txt`-shaped
 output, and both `vault_create.py` and `vault_create_prime.py` produce
 that shape.
 
@@ -49,7 +49,7 @@ that shape.
 vault_create.py / vault_create_prime.py
         │
         ▼
-trustee_words/trustee_1.txt ... trustee_T.txt   (plaintext codewords, as today)
+<random16>_trustee_words/trustee_1.txt ... trustee_T.txt   (plaintext codewords, as today)
         │
         ▼
    ┌─────────────────────────────┐
@@ -76,7 +76,7 @@ means:
   doesn't care how a trustee arrived at the string they type in — it
   just tries it against the share records.
 - shardic-prime's prime-trustee codeword and pool codewords are both
-  just files in `trustee_words/` too, so the plugin needs no
+  just files in `<random16>_trustee_words/` too, so the plugin needs no
   awareness of which scheme produced its input.
 
 ## The credential lookup: a pluggable interface, not a database design
