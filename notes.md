@@ -1,3 +1,52 @@
+# Session notes — 2026-07-13 (v1.2.1 release + doc path cleanup)
+
+## What happened
+
+Direct continuation of the trustee_words/prime-recovery fix in the
+entry below.
+
+1. **Published `v1.2.1`** — tagged and pushed, triggering the full
+   build+release pipeline. All three jobs passed (`linux` 3m14s,
+   `windows` 1m37s, `release` 23s); this is the first tagged release
+   that actually contains a working `vault_recover_prime.py`.
+
+2. **User asked whether the trustee_words fix affected the white
+   paper.** Checked and found two stale literal-path references:
+   `docs/whitepaper.md` §2.1's "Actual output" example (showed
+   `vault_out/trustee_words/`, now `vault_out/<random16>_trustee_
+   words/`) and §3.6's shardic-envelope discussion (generic
+   `trustee_words/trustee_N.txt` reference). Fixed both, keying the
+   §2.1 example to the same `ce28by1pn9z8wib2` random16 the walkthrough
+   already used for the `.krypt` filename, for internal consistency.
+
+3. **Also updated `docs/pubkey-envelope-plugin.md`** (4 occurrences of
+   the same stale path shape) after flagging the inconsistency and
+   getting confirmation — this design doc is directly referenced by
+   the whitepaper's §3.6, so leaving one updated and not the other
+   would've reintroduced the same drift immediately.
+
+   Committed as `5f8635f` and pushed.
+
+## State at end of session
+
+- `origin/main` tip is `5f8635f`. Working tree clean.
+- GitHub Release `v1.2.1` is live with all three build jobs green —
+  supersedes `v1.2.0`, which shipped with the broken prime-recovery
+  bug still present.
+- Both prose docs (`docs/whitepaper.md`, `docs/pubkey-envelope-
+  plugin.md`) now match the actual current `<random16>_trustee_words/`
+  directory shape.
+
+## Possibly worth following up
+
+- Same items carried over from the entry below: no automated test
+  suite yet (this session is a second example of a bug — the stale
+  doc paths — that a docs/code consistency check could have caught
+  automatically); Windows prime-CLI `.exe`s still only CI-verified,
+  never hand-run on a real Windows machine.
+
+---
+
 # Session notes — 2026-07-13 (trustee_words collision fix + found/fixed a broken prime-recovery bug)
 
 ## What happened
