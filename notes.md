@@ -1,3 +1,71 @@
+# Session notes — 2026-07-13 (CLAUDE.md committed + white paper added)
+
+## What happened
+
+1. **Investigated and committed two pre-existing uncommitted changes**
+   that predated this session (found via `/shardic-sync` refusing to
+   write a content-free entry until asked to look): the two AppImage
+   binaries showed as modified but were byte-identical to their
+   committed blobs (verified via `sha256sum`) — the only real diff was
+   the executable bit (tracked as `100644`, on-disk `100755`), so a
+   fresh checkout would've produced non-runnable AppImages. `CLAUDE.md`
+   was untracked but fully written and already in effect (it's the
+   file being fed as this project's instructions) — confirmed via
+   `git log --all -- CLAUDE.md` that it had never existed in history
+   under any commit. Committed both together (`0bcea26`): fixes the
+   AppImage mode and adds `CLAUDE.md` to the repo.
+
+2. **Converted the vetted white paper (docx → md) and added it to the
+   repo.** Source was `docs/shardic_white_paper.v.1.2.docx` (written
+   and vetted in a separate claude.ai conversation, dropped into the
+   repo directory by the user). Used `pandoc -f docx -t gfm
+   --extract-media=docs` to convert, which pulled the five embedded
+   diagrams out to `docs/media/image{1-5}.png`. Cleaned up pandoc's
+   output by hand: the docx's single-cell tables (used for CLI
+   command/output examples and two callout asides) came through as raw
+   HTML `<table>` blocks — converted the CLI/output ones to fenced
+   code blocks and the two prose asides ("Why this is
+   information-theoretic...", "Status: proposed, not yet
+   implemented...") to blockquotes; fixed image `src` paths (pandoc
+   emitted `docs/media/...` even though the doc itself lives in
+   `docs/`, so paths needed to drop the leading `docs/`); found and
+   removed one leftover stray `</tr></tbody></table>` tail pandoc left
+   after the second callout box. Per explicit user instruction, only
+   `docs/whitepaper.md` + `docs/media/*.png` were committed
+   (`d871832`) — the source `.docx` stays on disk untracked/unpushed,
+   not part of the repo.
+
+3. **Linked the white paper from README** — one line added to the
+   existing `## Files` list (right after the `docs/pubkey-envelope-
+   plugin.md` entry it already had), pointing at `docs/whitepaper.md`
+   with a short description. Committed and pushed as `9b30612`.
+
+## State at end of session
+
+- `origin/main` tip is `9b30612`. Working tree has exactly one
+  leftover item: `docs/shardic_white_paper.v.1.2.docx` sits untracked
+  on disk, intentionally not committed (user's explicit call — repo
+  keeps the `.md` derivative only, not the binary source).
+- `docs/whitepaper.md` is the first user-facing prose document in the
+  repo (as opposed to `docs/pubkey-envelope-plugin.md`, which is an
+  internal design doc) — it cross-references
+  `docs/pubkey-envelope-plugin.md` directly (§3.6/§4.4 discuss
+  shardic-envelope's impact), so if that design doc's status or
+  content changes materially, the white paper's §3.6/§4.4 sections
+  should be revisited to stay consistent.
+
+## Possibly worth following up
+
+- The white paper's TOC (carried over from the docx) uses pandoc's
+  auto-generated anchor slugs (e.g. `#the-.krypt-container-and-zero-
+  leakage-indexing`) — these may not exactly match GitHub's own header-
+  slug generation for entries with punctuation like `.krypt`. Not
+  verified against the rendered GitHub page; worth a quick check if the
+  in-page TOC links get used/reported as broken.
+- Still no automated test suite (carried over from every prior entry).
+
+---
+
 # Session notes — 2026-07-12 (shardic-envelope design doc)
 
 ## What happened
