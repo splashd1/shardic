@@ -13,9 +13,11 @@ This is a separate scheme and container format from vault_create.py
 -- vaults created here can only be recovered with vault_recover_prime.py.
 
 Outputs:
-  <vault_dir>/<random16>.krypt                 - single-file container
-  <vault_dir>/trustee_words/trustee_prime.txt  - the mandatory codeword
-  <vault_dir>/trustee_words/trustee_N.txt      - pool codewords (interchangeable)
+  <vault_dir>/<random16>.krypt                                - single-file container
+  <vault_dir>/<random16>_trustee_words/trustee_prime.txt       - the mandatory codeword
+  <vault_dir>/<random16>_trustee_words/trustee_N.txt           - pool codewords (interchangeable)
+  (the trustee_words directory name is keyed to the .krypt filename
+  above, so repeated runs into the same <vault_dir> never collide)
 
 Usage:
   python3 vault_create_prime.py --input PATH --trustees T --threshold D \

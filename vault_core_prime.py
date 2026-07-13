@@ -102,7 +102,9 @@ def create_vault_prime(
 
     outdir = outdir or f"vault_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     os.makedirs(outdir, exist_ok=True)
-    words_dir = os.path.join(outdir, "trustee_words")
+    krypt_filename = base.random_filename(16) + ".krypt"
+    krypt_stem = os.path.splitext(krypt_filename)[0]
+    words_dir = os.path.join(outdir, f"{krypt_stem}_trustee_words")
     os.makedirs(words_dir, exist_ok=True)
 
     if word_length is None:
@@ -209,7 +211,6 @@ def create_vault_prime(
         "nonce_len": NONCE_LEN,
         "shares": share_records,
     }
-    krypt_filename = base.random_filename(16) + ".krypt"
     krypt_path = os.path.join(outdir, krypt_filename)
     krypt_container.write_krypt(krypt_path, metadata, ciphertext)
     log(f"Wrote vault container: {krypt_path} ({os.path.getsize(krypt_path)} bytes)")
@@ -238,7 +239,16 @@ def peek_metadata(krypt_path: str) -> dict:
 
 
 def resolve_kdf(metadata: dict) -> tuple[str, dict]:
-    return base.resolve_kdf(metadata)
+    """Raises VaultError if this isn't a shardic-prime vault (use
+    vault_recover.py for plain krypt1 vaults) -- mirrors peek_metadata's
+    guard, and is the choke point vault_recover_prime.py's main() passes
+    through (it reads the container directly, bypassing peek_metadata)."""
+    if metadata.get("scheme") != "prime-trustee":
+        raise VaultError(
+            f"This is not a shardic-prime vault (scheme={metadata.get('scheme')!r}), "
+            "not 'prime-trustee'. Use vault_recover.py for plain krypt1 vaults."
+        )
+    return base._resolve_kdf_common(metadata)
 
 
 def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, used_indices):

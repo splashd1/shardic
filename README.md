@@ -126,8 +126,11 @@ Outputs into `vault_out/`:
 - `<random16>.krypt` — **single file** containing both the metadata
   (everything needed to recover, except the codewords) and the encrypted
   archive. This is the one file you back up or share.
-- `trustee_words/trustee_1.txt` ... `trustee_5.txt` — one codeword each,
-  e.g. `desktop-anaconda-upstroke-paralegal-survivor`
+- `<random16>_trustee_words/trustee_1.txt` ... `trustee_5.txt` — one
+  codeword each, e.g. `desktop-anaconda-upstroke-paralegal-survivor`.
+  The directory name is keyed to the `.krypt` filename above (same
+  random16), so creating multiple vaults into the same `--outdir`
+  never overwrites an earlier run's trustee codewords.
 
 Pass `--word-length` (e.g. `--word-length 8 --word-count 2`) to get the
 old fixed-length behavior instead — see "Codeword modes" below for the

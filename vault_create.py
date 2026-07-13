@@ -13,9 +13,14 @@ Outputs:
                                        needed to recover except the
                                        codewords) and the encrypted
                                        archive -- one file to share
-  <vault_dir>/trustee_words/*.txt   - one codeword per trustee, to be
+  <vault_dir>/<random16>_trustee_words/*.txt
+                                     - one codeword per trustee, to be
                                        distributed out-of-band and then
                                        deleted from this machine
+                                       (directory name is keyed to the
+                                       .krypt filename above, so
+                                       repeated runs into the same
+                                       <vault_dir> never collide)
 
 No codeword is ever written next to information that says which
 share it unlocks -- see vault_recover.py for how matching works.

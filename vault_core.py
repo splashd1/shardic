@@ -156,7 +156,9 @@ def create_vault(
 
     outdir = outdir or f"vault_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     os.makedirs(outdir, exist_ok=True)
-    words_dir = os.path.join(outdir, "trustee_words")
+    krypt_filename = random_filename(16) + ".krypt"
+    krypt_stem = os.path.splitext(krypt_filename)[0]
+    words_dir = os.path.join(outdir, f"{krypt_stem}_trustee_words")
     os.makedirs(words_dir, exist_ok=True)
 
     if word_length is None:
@@ -251,7 +253,6 @@ def create_vault(
         "nonce_len": NONCE_LEN,
         "shares": share_records,
     }
-    krypt_filename = random_filename(16) + ".krypt"
     krypt_path = os.path.join(outdir, krypt_filename)
     krypt_container.write_krypt(krypt_path, metadata, ciphertext)
     log(f"Wrote vault container: {krypt_path} ({os.path.getsize(krypt_path)} bytes)")
@@ -278,19 +279,13 @@ def peek_metadata(krypt_path: str) -> dict:
     return metadata
 
 
-def resolve_kdf(metadata: dict) -> tuple[str, dict]:
-    """Backward compatible with version-1 metadata (PBKDF2 only, flat fields).
-    Raises VaultError if the vault needs Argon2id and it's unavailable, or
-    if this is a shardic-prime vault (use vault_recover_prime.py for those)
-    -- this is the one choke point both vault_recover.py (which reads the
-    container directly, bypassing peek_metadata) and the GUI's
-    match_codewords() both pass through, so it's checked here too, not
-    just in peek_metadata."""
-    if metadata.get("scheme") == "prime-trustee":
-        raise VaultError(
-            "This is a shardic-prime vault (scheme='prime-trustee'), not a "
-            "plain krypt1 vault. Use vault_recover_prime.py to recover it."
-        )
+def _resolve_kdf_common(metadata: dict) -> tuple[str, dict]:
+    """Shared by vault_core.resolve_kdf and vault_core_prime.resolve_kdf --
+    backward compatible with version-1 metadata (PBKDF2 only, flat fields).
+    Raises VaultError if the vault needs Argon2id and it's unavailable.
+    Does NOT check the scheme tag; callers apply their own scheme guard
+    before calling this, since the base scheme rejects prime-trustee
+    metadata and the prime scheme requires it."""
     if "kdf_params" in metadata:
         kdf_method = metadata["kdf"]
         kdf_params = metadata["kdf_params"]
@@ -306,6 +301,20 @@ def resolve_kdf(metadata: dict) -> tuple[str, dict]:
             "choice was fixed when the vault was created."
         )
     return kdf_method, kdf_params
+
+
+def resolve_kdf(metadata: dict) -> tuple[str, dict]:
+    """Raises VaultError if this is a shardic-prime vault (use
+    vault_recover_prime.py for those) -- this is the one choke point both
+    vault_recover.py (which reads the container directly, bypassing
+    peek_metadata) and the GUI's match_codewords() both pass through, so
+    it's checked here too, not just in peek_metadata."""
+    if metadata.get("scheme") == "prime-trustee":
+        raise VaultError(
+            "This is a shardic-prime vault (scheme='prime-trustee'), not a "
+            "plain krypt1 vault. Use vault_recover_prime.py to recover it."
+        )
+    return _resolve_kdf_common(metadata)
 
 
 def try_match_word(codeword: str, share_records, kdf_method, kdf_params, used_indices):
