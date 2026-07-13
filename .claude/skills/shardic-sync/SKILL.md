@@ -43,7 +43,7 @@ starts with full context via the `SessionStart` hook
    git -C "$CLAUDE_PROJECT_DIR" add notes.md
    git -C "$CLAUDE_PROJECT_DIR" commit -m "<short summary>
 
-   Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+   Fine-tuned, vetted, and, in some cases, supplemented by Claude Sonnet 5"
    git -C "$CLAUDE_PROJECT_DIR" push
    ```
    If push fails (e.g. remote has commits this machine doesn't — another
