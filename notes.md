@@ -1,3 +1,73 @@
+# Session notes — 2026-07-13 (trustee_words collision fix + found/fixed a broken prime-recovery bug)
+
+## What happened
+
+1. **Fixed a real bug the user reported**: `create_vault`/
+   `create_vault_prime` always wrote codewords to a fixed
+   `<outdir>/trustee_words/` directory, so running vault creation
+   twice into the same `--outdir` silently overwrote the first run's
+   trustee codeword files (while the `.krypt` files themselves stayed
+   safe, since those get random names). Fixed in both `vault_core.py`
+   and `vault_core_prime.py` by moving the random `.krypt` filename
+   generation earlier and keying the trustee-words directory to it:
+   `<outdir>/<random16>_trustee_words/`. No frontend changes needed —
+   CLI/GUI both already read `result['words_dir']` dynamically rather
+   than hardcoding the path. Updated the doc comments that did
+   hardcode the old shape (`vault_create.py`/`vault_create_prime.py`
+   docstrings, README's create-vault walkthrough) to match.
+
+2. **Found and fixed an unrelated, more serious bug while verifying
+   the above**: `vault_recover_prime.py` could never actually recover
+   a real shardic-prime vault. `vault_core_prime.resolve_kdf()` just
+   forwarded to `vault_core.resolve_kdf()`, which explicitly rejects
+   `scheme == "prime-trustee"` metadata (that guard was added in an
+   earlier session's commit `3fb9368` to stop the *base* scheme from
+   loading prime vaults) — so the prime recovery tool was rejecting
+   its own vaults with "use vault_recover_prime.py to recover it,"
+   itself. This affected both the CLI and the GUI's Recover-Prime tab
+   (both route through `match_codewords_prime` → the broken
+   `resolve_kdf`). Flagged it to the user before touching anything,
+   got confirmation to fix it in the same commit. Fix: factored the
+   KDF-extraction logic (the part that doesn't care about scheme) into
+   a shared `_resolve_kdf_common()` in `vault_core.py`; each scheme's
+   public `resolve_kdf()` now applies only its own scheme guard (base
+   rejects prime metadata, prime *requires* it) before delegating to
+   the shared helper.
+
+3. **Verified thoroughly** before committing: full create→recover
+   round trips for both schemes, including creating two vaults into
+   the same `--outdir` to confirm the directories no longer collide;
+   both `gf256_sss.py` and `gf256_sss_prime.py` self-tests still pass.
+   (One false alarm along the way: an initial prime-recovery test
+   under-supplied codewords — passed 2 of the 3 required — which
+   triggered an interactive `getpass` prompt that failed on EOF in a
+   piped shell; not a bug, just my own test mistake, resolved by
+   supplying the right codeword count.)
+
+   Committed as `e8de6ba` and pushed.
+
+## State at end of session
+
+- `origin/main` tip is `e8de6ba`. Working tree clean.
+- Both bugs are fixed and verified; no known-broken functionality
+  remains in either scheme as of this entry.
+
+## Possibly worth following up
+
+- The `v1.2.0` GitHub Release (from the entry below) predates this
+  fix — its `vault-create-prime`/`vault-recover-prime` binaries still
+  have the broken `resolve_kdf`. Worth cutting a new tagged release
+  (e.g. `v1.2.1` or `v1.3.0`) once more changes accumulate, or now if
+  the prime CLI executables are meant to actually work for anyone who
+  downloaded them.
+- Still no automated test suite — this session's verification was
+  again manual/scripted-ad-hoc (carried over from every prior entry,
+  but this session is a good example of exactly the kind of bug a
+  cross-scheme regression test would have caught immediately rather
+  than by incidental manual testing).
+
+---
+
 # Session notes — 2026-07-13 (v1.2.0 release + docx files added)
 
 ## What happened
