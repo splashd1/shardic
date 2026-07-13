@@ -260,7 +260,7 @@ Vault creation proceeds in a fixed sequence:
 
 At this point, the DEK is the single piece of secret material standing between the ciphertext and the plaintext — exactly as in conventional symmetric encryption. What differs from the conventional model is what happens to that key next.
 
-<img src="media/image1.png" style="width:5.17847in;height:3.27778in" />
+![](media/image1.png)
 
 ## 3.2 Shamir's Secret Sharing over GF(256)
 
@@ -278,7 +278,7 @@ The construction, applied independently to each of the DEK's 32 bytes:
 >
 > A polynomial of degree D − 1 is uniquely determined by any D points on it — but with only D − 1 points, *every* possible value of the constant term (the secret byte) remains equally consistent with those points. An attacker holding D − 1 shares therefore learns exactly zero bits about the DEK, regardless of computing power, time, or future cryptanalytic advances against AES itself. This is the property that separates threshold recovery from key-splitting schemes built on secret-sharing-flavored encryption tricks that are only computationally, not information-theoretically, hard to break below threshold. "Information-theoretic" security means a guarantee that holds regardless of computing power — not because breaking it is *hard*, but because the information needed to break it simply isn't *there*.
 
-<img src="media/image2.png" style="width:5.17847in;height:2.41111in" />
+![](media/image2.png)
 
 ## 3.3 Codeword-Derived Key Protection of Shares
 
@@ -292,7 +292,7 @@ A raw Shamir share is still just data — if written to disk unprotected, whoeve
 
 The vault records, per share, only an opaque triple: { salt, nonce, ciphertext }. Which KDF method and parameters were used are recorded once in the container's metadata — self-describing, so recovery never needs to be told out-of-band which settings a given vault used.
 
-<img src="media/image3.png" style="width:5.17847in;height:4.09861in" />
+![](media/image3.png)
 
 ## 3.4 The .krypt Container and Zero-Leakage Indexing
 
@@ -302,7 +302,7 @@ The metadata's list of protected shares carries **no mapping** from record to tr
 
 With T in the tens, this exhaustive trial is effectively instantaneous, and it has a meaningful security consequence: the .krypt file, examined on its own, reveals nothing about which share belongs to which trustee, or how many codewords would need to be compromised together to threaten a specific subset of the data. Seizing the file, or several codewords, in isolation yields no assignment information beyond what successful decryption itself reveals.
 
-<img src="media/image4.png" style="width:5.17847in;height:3.98889in" />
+![](media/image4.png)
 
 ## 3.5 How shardic-prime Varies
 
@@ -326,7 +326,7 @@ Without mask, the pool shares — even *all* of them — reconstruct only masked
 
 A shardic-prime vault is tagged in its own metadata ("scheme": "prime-trustee") specifically so it can never be opened by, or confused with, the base scheme's recovery tool, and vice versa — the two container formats are deliberately incompatible rather than silently cross-readable.
 
-<img src="media/image5.png" style="width:5.17847in;height:3.32292in" />
+![](media/image5.png)
 
 ## 3.6 A Proposed Extension: Public-Key-Wrapped Codewords (shardic-envelope)
 
