@@ -79,6 +79,18 @@ government and business scenarios.
 - `vault_create_prime.py` / `vault_recover_prime.py` / `vault_core_prime.py` / `gf256_sss_prime.py` — the **shardic-prime** variant: adds a mandatory "prime trustee" on top of the base scheme. See "shardic-prime" below. Available both as CLI scripts and as a "Shardic-Prime" tab (with its own Create/Recover sub-tabs) in `vault_gui.py`.
 - `docs/pubkey-envelope-plugin.md` — **shardic-envelope**, a design proposal (not yet implemented) for a bolt-on plugin that wraps each trustee's codeword under their own public key, trading memorability for arbitrarily larger/higher-entropy codewords protected by a keypair instead of memory.
 - [`docs/keycloak-credential-lookup.md`](docs/keycloak-credential-lookup.md) — a design proposal (not yet implemented) for a Keycloak-backed `CredentialLookup` for shardic-envelope: selecting trustees from a Keycloak group, and an OIDC-authenticated, client-side-only key registration flow.
+- [`docs/envelope-delivery.md`](docs/envelope-delivery.md) — a design proposal (not yet implemented) for getting a wrapped envelope from a shardic-envelope wrap event to the right trustee: a pull-based, single-read drop point modeled on Vault-style response-wrapping, authenticated by the same OIDC session as registration.
+
+  Together, these three documents describe one proposed operational
+  lifecycle for shardic-envelope, none of it implemented yet:
+  **register** (trustee generates a keypair client-side and registers
+  the public half via `keycloak-credential-lookup.md`) → **wrap**
+  (operator runs shardic-envelope per `pubkey-envelope-plugin.md`,
+  which looks up each trustee's public key via that same registry) →
+  **deliver** (each envelope lands in the drop point from
+  `envelope-delivery.md` for the trustee to pull) → **recover**
+  (trustee decrypts locally and types the resulting codeword into
+  `vault_recover.py`/the GUI, unchanged from today).
 - [`docs/shardic_whitepaper.1.2.1.md`](docs/shardic_whitepaper.1.2.1.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
