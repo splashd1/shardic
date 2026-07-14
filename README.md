@@ -80,17 +80,19 @@ government and business scenarios.
 - `docs/pubkey-envelope-plugin.md` — **shardic-envelope**, a design proposal (not yet implemented) for a bolt-on plugin that wraps each trustee's codeword under their own public key, trading memorability for arbitrarily larger/higher-entropy codewords protected by a keypair instead of memory.
 - [`docs/keycloak-credential-lookup.md`](docs/keycloak-credential-lookup.md) — a design proposal (not yet implemented) for a Keycloak-backed `CredentialLookup` for shardic-envelope: selecting trustees from a Keycloak group, and an OIDC-authenticated, client-side-only key registration flow.
 - [`docs/envelope-delivery.md`](docs/envelope-delivery.md) — a design proposal (not yet implemented) for getting a wrapped envelope from a shardic-envelope wrap event to the right trustee: a pull-based, single-read drop point modeled on Vault-style response-wrapping, authenticated by the same OIDC session as registration.
+- [`docs/notification-channel-concept.md`](docs/notification-channel-concept.md) — a concept paper (one step earlier than a design proposal — no channel chosen yet) laying out the need, options, and design-choice drivers for the trustee-facing "go pull your envelope" ping and the operator-facing "unredeemed drop expired" alert that `envelope-delivery.md` left open.
 
-  Together, these three documents describe one proposed operational
+  Together, these four documents describe one proposed operational
   lifecycle for shardic-envelope, none of it implemented yet:
   **register** (trustee generates a keypair client-side and registers
   the public half via `keycloak-credential-lookup.md`) → **wrap**
   (operator runs shardic-envelope per `pubkey-envelope-plugin.md`,
   which looks up each trustee's public key via that same registry) →
   **deliver** (each envelope lands in the drop point from
-  `envelope-delivery.md` for the trustee to pull) → **recover**
-  (trustee decrypts locally and types the resulting codeword into
-  `vault_recover.py`/the GUI, unchanged from today).
+  `envelope-delivery.md` for the trustee to pull, once a channel from
+  `notification-channel-concept.md` is picked to tell them it's there) →
+  **recover** (trustee decrypts locally and types the resulting
+  codeword into `vault_recover.py`/the GUI, unchanged from today).
 - [`docs/shardic_white_paper.v.1.2.md`](docs/shardic_white_paper.v.1.2.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
