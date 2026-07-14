@@ -1,3 +1,33 @@
+# Session notes — 2026-07-13 (downloaded v1.2.1 release binaries locally)
+
+## What happened
+
+No repo changes this session — purely local machine setup. Downloaded
+all 12 assets from the `v1.2.1` GitHub Release (`gh release download
+v1.2.1`) and placed them at `~/Downloads/shardic-v1.2.1/` on this
+machine, marking the Linux binaries and both AppImages executable
+(`vault-create`, `vault-recover`, `vault-create-prime`,
+`vault-recover-prime`, `VaultTool-GUI`, both `.AppImage`s). The
+Windows `.exe`s were left as downloaded (not runnable here, kept for
+completeness/transfer to a Windows machine later).
+
+## State at end of session
+
+- `origin/main` unchanged this session (tip still `e18d168` from the
+  entry below). Working tree clean.
+- `~/Downloads/shardic-v1.2.1/` on this machine now has a ready-to-run
+  local copy of the latest release — useful for quick manual testing
+  without rebuilding, e.g. finally hand-verifying the prime CLI fix
+  from earlier today outside of CI.
+
+## Possibly worth following up
+
+- Same carryover as recent entries: no automated test suite; Windows
+  `.exe`s (now sitting locally too) still only CI-verified, never
+  hand-run on a real Windows machine.
+
+---
+
 # Session notes — 2026-07-13 (whitepaper renamed)
 
 ## What happened
