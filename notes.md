@@ -1,3 +1,24 @@
+# Session notes — 2026-07-14 (whitepaper docx round-trip fix)
+
+## What happened
+
+Pulled first (`36a7410` — another machine had added §3.7 extending the
+shardic-envelope lifecycle with credentials/delivery to the whitepaper
+md). Then regenerated `docs/shardic_white_paper.v.1.2.docx` from the
+md via pandoc, but the first attempt silently dropped all 5 graphics —
+pandoc's docx writer can't embed images that arrive as raw `<img>`
+HTML (which is what the original docx->md conversion had produced).
+Fixed by converting those 5 tags to native markdown image syntax
+(`![](./media/imageN.png){width=... height=...}`), matching the fix a
+prior session already applied to the old `whitepaper.md`. Regenerated
+docx confirmed via `unzip -l` to have all 5 images embedded (174KB, up
+from the broken 33KB). Committed both files as `f6c7833`, pushed.
+
+## State at end
+
+Working tree clean, `origin/main` up to date at `f6c7833`. No open
+follow-ups.
+
 # Session notes — 2026-07-14 (whitepaper doc cleanup)
 
 ## What happened
