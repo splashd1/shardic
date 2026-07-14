@@ -68,40 +68,43 @@ Table of Contents
 (shardic-envelope)
 15](#a-proposed-extension-public-key-wrapped-codewords-shardic-envelope)
 
-[4. Security Discussion 17](#security-discussion)
+[3.7 Extending the Lifecycle: Credentials and Delivery (Proposed)
+16](#37-extending-the-lifecycle-credentials-and-delivery-proposed)
+
+[4. Security Discussion 18](#security-discussion)
 
 [4.1 Two Different Kinds of Strength: Key Length vs. Trustee Threshold
-17](#two-different-kinds-of-strength-key-length-vs.-trustee-threshold)
+18](#two-different-kinds-of-strength-key-length-vs.-trustee-threshold)
 
 [4.2 Codeword Modes: Security and Usability Trade-offs
-17](#codeword-modes-security-and-usability-trade-offs)
+18](#codeword-modes-security-and-usability-trade-offs)
 
-[Memorable mode (default) 17](#memorable-mode-default)
+[Memorable mode (default) 18](#memorable-mode-default)
 
-[Dictionary mode 18](#dictionary-mode)
+[Dictionary mode 19](#dictionary-mode)
 
-[Synthetic mode 18](#synthetic-mode)
+[Synthetic mode 19](#synthetic-mode)
 
-[4.3 Tuning Options 18](#tuning-options)
+[4.3 Tuning Options 19](#tuning-options)
 
 [4.4 Impact of shardic-envelope: Security, Use-Case, and Operational
 Considerations
-19](#impact-of-shardic-envelope-security-use-case-and-operational-considerations)
+20](#impact-of-shardic-envelope-security-use-case-and-operational-considerations)
 
-[Security impact on protection 19](#security-impact-on-protection)
+[Security impact on protection 20](#security-impact-on-protection)
 
-[Use-case impact for adoption 20](#use-case-impact-for-adoption)
+[Use-case impact for adoption 21](#use-case-impact-for-adoption)
 
-[Other operational impacts 20](#other-operational-impacts)
+[Other operational impacts 21](#other-operational-impacts)
 
-[5. Summary 22](#summary)
+[5. Summary 23](#summary)
 
 [5.1 What Sets This Apart From Conventional Symmetric Encryption
-22](#what-sets-this-apart-from-conventional-symmetric-encryption)
+23](#what-sets-this-apart-from-conventional-symmetric-encryption)
 
-[5.2 Advantages 22](#advantages)
+[5.2 Advantages 23](#advantages)
 
-[5.3 Limitations and Mitigations 23](#limitations-and-mitigations)
+[5.3 Limitations and Mitigations 24](#limitations-and-mitigations)
 
 # Abstract
 
@@ -693,6 +696,97 @@ a plaintext codeword, exactly as in §2.2. What changes is *provisioning*
 locally, once, to obtain the codeword they would otherwise have had to
 memorize or write down themselves.
 
+## 3.7 Extending the Lifecycle: Credentials and Delivery (Proposed)
+
+<table>
+<colgroup>
+<col style="width: 100%" />
+</colgroup>
+<tbody>
+<tr class="odd">
+<td><p><strong>Status: proposed, not yet implemented</strong></p>
+<p>Like §3.6, this subsection describes design documents
+(docs/keycloak-credential-lookup.md and docs/envelope-delivery.md) in
+the project repository, not present functionality. Neither introduces
+any change to vault_core.py or the wrap/recovery crypto path described
+in §3.1–§3.4.</p></td>
+</tr>
+</tbody>
+</table>
+
+§3.6 deliberately left two questions open: how does get_public_key(trustee_id)
+know it has the *right* public key for a given trustee (the
+CredentialLookup interface), and how does a wrapped .envelope file
+actually get from the operator's machine — where wrap-time runs — onto
+that trustee's device? Two follow-on design docs sketch one concrete
+answer to both, extending shardic-envelope into a full four-stage
+lifecycle: **register → wrap → deliver → recover**.
+
+- **Register.** Candidate trustees are drawn from a dedicated Keycloak
+  group (e.g. "shardic-trustees"), queried via a read-only service
+  account scoped to that group rather than the full realm user list —
+  this keeps "who can be picked as a trustee" an explicit, auditable
+  membership decision, and limits what a compromised picker credential
+  can do to enumeration, not impersonation. Each trustee's *public key*,
+  by contrast, deliberately does **not** live in Keycloak: user
+  attributes have no key-specific validation, versioning, or rotation
+  semantics, and read access to them tracks Keycloak's broader
+  user-read permission model rather than the narrower scope key
+  fingerprints warrant. Instead, an OIDC-authenticated registration flow
+  populates a small, separate local key registry (flat JSON or SQLite
+  is enough to start), keyed by the trustee's Keycloak `sub` claim. The
+  keypair itself is generated **client-side only** — WebCrypto or the
+  CLI on the trustee's own device, or a hardware-backed token via
+  WebAuthn for less-technical trustees — so the private key never
+  transits, or is even briefly held by, any server shardic controls.
+
+- **Wrap.** Mechanically unchanged from §3.6:
+  CredentialLookup.get_public_key(trustee_id) still resolves a public
+  key at wrap time. What's now concrete is *where* — against the local
+  key registry populated at registration, never against Keycloak
+  directly — so wrap-time carries no live dependency on the identity
+  provider at all.
+
+- **Deliver.** Wrapped .envelope files are deposited at an
+  authenticated, single-read **drop point**, addressed by trustee_id
+  rather than a contact channel (email, phone, push token — none of
+  which this identity model otherwise knows), modeled on Vault-style
+  response-wrapping. The trustee fetches their own envelope themselves,
+  once, via an OIDC session — the same kind already used at
+  registration. A separate, low-stakes notification ("a wrap event
+  happened, go check") can ride whatever channel the organization
+  already has, because it carries no secret, only a prompt, and so
+  doesn't itself need to be a trusted channel. "Exactly once" redemption
+  is used as a *detection* mechanism, not a prevention one — a second
+  read attempt on an already-claimed envelope is a signal something is
+  wrong, not a guarantee nothing can go wrong.
+
+- **Recover.** Unaffected. §2.2's walkthrough is exactly the same either
+  way — the trustee decrypts their local envelope once, then supplies
+  the resulting plaintext codeword like any other trustee.
+
+The organizing principle across both docs, and the reason this is
+described as an *extension* rather than a redesign: **identity and
+selection stay cleanly separated from key custody.** Keycloak (or
+whatever directory an org already runs) is good at knowing who its
+people are; it is deliberately never asked to hold, protect, or
+attest to key material. The OAuth/OIDC dependency this introduces is
+scoped strictly to registration and delivery — it never becomes a
+dependency of the wrap or recovery math itself, so the offline,
+fail-closed core this paper describes in §3.1–§3.4 is unchanged by
+adopting it. A compromised or unavailable identity provider can block
+a trustee from *registering* or *fetching* their envelope; it cannot,
+on its own, expose a DEK, forge a share, or weaken the D-of-T
+guarantee.
+
+Both docs are explicit about what remains undecided: the "a wrap event
+happened" notification channel is out of scope for either document,
+the key registry is sketched only to prototype scale (flat JSON/SQLite,
+not a specified production store), and — as with §3.6 itself — none of
+this has a reference implementation yet. `CredentialLookup`,
+`EnvelopeDropPoint`, and the client-side keygen flow remain Protocol
+sketches, not shipped code.
+
 # 4. Security Discussion
 
 ## 4.1 Two Different Kinds of Strength: Key Length vs. Trustee Threshold
@@ -867,7 +961,11 @@ decision, not a vault-wide one.
   at the moment shares are generated — an availability and integrity
   requirement §1.1/§1.2 don't otherwise impose on this tool, and one
   that itself needs governance (who can add or rotate an entry, how
-  compromise of the lookup service is detected).
+  compromise of the lookup service is detected). §3.7 sketches one
+  concrete shape for this — a Keycloak-backed trustee directory kept
+  deliberately separate from key custody — along with the matching
+  delivery-time dependency (a drop point the trustee must be able to
+  reach) that a full implementation would also need to account for.
 
 - An honest, unresolved erasure gap. The design doc's own caveat — that
   overwrite-then-delete of the plaintext codeword intermediates is not a
@@ -945,8 +1043,9 @@ administrator, insider, or software defect in the recovery tool itself.
   word count (the tool's own entropy estimate should be reviewed before
   distribution), and prefer Argon2id where available. For trustees who
   can take on key custody, the proposed shardic-envelope extension
-  (§3.6, §4.4) offers a longer-term path around this limitation entirely
-  — at the cost of a different, key-custody-shaped set of risks.
+  (§3.6, §3.7, §4.4) offers a longer-term path around this limitation
+  entirely — at the cost of a different, key-custody-shaped set of
+  risks.
 
 - This is a static, split-once design. Revoking or replacing a single
   trustee requires a full re-split and re-distribution of a new vault;
