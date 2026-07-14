@@ -1,3 +1,27 @@
+# Session notes — 2026-07-14 (whitepaper doc cleanup)
+
+## What happened
+
+Converted `~/Documents/shardic_white_paper.v.1.2.docx` to markdown via
+pandoc (`--extract-media`), pulling out its 5 embedded images. The
+extracted PNGs turned out byte-identical to what already lived in
+`docs/media/` (from a prior v1.2.1 conversion), so only the new
+markdown file was added — no duplicate images. Committed as
+`docs/shardic_white_paper.v.1.2.md`.
+
+Then removed `docs/shardic_whitepaper.1.2.1.md` — its filename
+suggested it was the newest revision, but `git log --follow` showed it
+was just the original `whitepaper.md` renamed, not an actual later
+draft. Repointed the README's white paper link to
+`docs/shardic_white_paper.v.1.2.md`. Both changes committed and
+pushed (`520e43f`, `5711c09`).
+
+## State at end
+
+Working tree clean, everything pushed to `origin/main`. `docs/` now
+has a single, correctly-versioned white paper markdown file plus its
+docx source. No open follow-ups.
+
 # Session notes — 2026-07-13 (shardic-envelope: Keycloak + delivery design docs)
 
 ## What happened
