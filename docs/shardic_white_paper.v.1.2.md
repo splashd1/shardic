@@ -472,8 +472,7 @@ between the ciphertext and the plaintext — exactly as in conventional
 symmetric encryption. What differs from the conventional model is what
 happens to that key next.
 
-<img src="./media/image1.png"
-style="width:5.17847in;height:3.27778in" />
+![](./media/image1.png){width="5.17847in" height="3.27778in"}
 
 ## 3.2 Shamir's Secret Sharing over GF(256)
 
@@ -522,8 +521,7 @@ because the information needed to break it simply isn't
 </tbody>
 </table>
 
-<img src="./media/image2.png"
-style="width:5.17847in;height:2.41111in" />
+![](./media/image2.png){width="5.17847in" height="2.41111in"}
 
 ## 3.3 Codeword-Derived Key Protection of Shares
 
@@ -553,8 +551,7 @@ ciphertext }. Which KDF method and parameters were used are recorded
 once in the container's metadata — self-describing, so recovery never
 needs to be told out-of-band which settings a given vault used.
 
-<img src="./media/image3.png"
-style="width:5.17847in;height:4.09861in" />
+![](./media/image3.png){width="5.17847in" height="4.09861in"}
 
 ## 3.4 The .krypt Container and Zero-Leakage Indexing
 
@@ -584,8 +581,7 @@ a specific subset of the data. Seizing the file, or several codewords,
 in isolation yields no assignment information beyond what successful
 decryption itself reveals.
 
-<img src="./media/image4.png"
-style="width:5.17847in;height:3.98889in" />
+![](./media/image4.png){width="5.17847in" height="3.98889in"}
 
 ## 3.5 How shardic-prime Varies
 
@@ -637,8 +633,7 @@ with, the base scheme's recovery tool, and vice versa — the two
 container formats are deliberately incompatible rather than silently
 cross-readable.
 
-<img src="./media/image5.png"
-style="width:5.17847in;height:3.32292in" />
+![](./media/image5.png){width="5.17847in" height="3.32292in"}
 
 ## 3.6 A Proposed Extension: Public-Key-Wrapped Codewords (shardic-envelope)
 
