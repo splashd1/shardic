@@ -91,7 +91,7 @@ government and business scenarios.
   `envelope-delivery.md` for the trustee to pull) → **recover**
   (trustee decrypts locally and types the resulting codeword into
   `vault_recover.py`/the GUI, unchanged from today).
-- [`docs/shardic_whitepaper.1.2.1.md`](docs/shardic_whitepaper.1.2.1.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
+- [`docs/shardic_white_paper.v.1.2.md`](docs/shardic_white_paper.v.1.2.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
 ```
