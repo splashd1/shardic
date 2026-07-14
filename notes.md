@@ -1,3 +1,55 @@
+# Session notes — 2026-07-14 (reconciled diverged local main; envelope-delivery notification discussion)
+
+## What happened
+
+Session opened on a *different* local clone than the one that did the
+"whitepaper docx round-trip fix" entry below — this machine's `main`
+had gone fully stale: `git status` showed 31 local-only commits vs. 61
+origin-only commits, diverging all the way back to the initial commit.
+Root cause: another machine's history-rewrite session (`0c7ee1a`,
+mentioned in earlier entries) rewrote every commit's attribution
+trailer, so this clone's old hashes shared no common ancestor with the
+new ones apart from the very first commit. Verified before touching
+anything: `git diff main origin/main` showed only trailer-wording/CI
+diffs, and `main^{tree}` matched byte-for-byte the tree of origin's
+rewritten equivalent of this clone's tip — confirming zero unique
+local content. Got explicit user confirmation, then `git reset --hard
+origin/main`. This clone is now current at `1976b2f` with everything
+the other machine had already pushed (Keycloak/delivery design docs,
+white paper §3.7 + docx fix, v1.2.0/v1.2.1 releases, CLAUDE.md, etc. —
+see entries below for details on that work, done elsewhere).
+
+Then discussed the `envelope-delivery.md` doc's explicitly-deferred
+"wrap event happened, go check" notification channel (doc line
+161-164). No design work done — walked through what's actually
+missing (channel choice, where a delivery address would even come from
+given the identity model tracks no contact info, unifying the
+trustee-facing "go check" ping with the separate operator-facing
+expiry alert, no `Protocol` sketch yet unlike `EnvelopeDropPoint`).
+User decided to leave it as **TBD for now**, with a stated intent to
+possibly write it up later as a standalone **"Notification Channel
+Concept paper"** (need → options → design-choice drivers), rather than
+as a subsection of the existing doc.
+
+## State at end
+
+Working tree clean, `origin/main` unchanged this session (still
+`1976b2f`) other than this notes.md commit. No code or doc changes —
+purely a repo-sync + discussion session.
+
+## Possibly worth following up
+
+- If/when the user wants it, draft a fourth shardic-envelope doc:
+  `docs/notification-channel-concept.md` (or similar), covering the
+  gap identified above — channel selection, address sourcing (likely
+  Keycloak `email` profile attribute vs. a separate registry),
+  trustee-facing vs. operator-facing triggers, and the no-secret-in-
+  payload constraint that's already settled.
+- Same longstanding carryovers: no automated test suite; Windows
+  `.exe`s only CI-verified, never hand-run.
+
+---
+
 # Session notes — 2026-07-14 (whitepaper docx round-trip fix)
 
 ## What happened
