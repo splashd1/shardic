@@ -1,3 +1,73 @@
+# Session notes — 2026-07-13 (shardic-envelope: Keycloak + delivery design docs)
+
+## What happened
+
+Started by reconciling a diverged local `main` (19 ahead / 50+ behind
+origin) from another machine's session that had rewritten commit
+attribution history — confirmed the 18 "ahead" commits were
+content-identical to rewritten origin commits (same patch-id, just old
+trailer wording) via `git diff`, then `git rebase origin/main`
+auto-dropped all 18 as already-applied and replayed only the one
+genuinely new local commit (`e3f6474`, dist/ gitignore) on top. Pushed
+clean.
+
+Then did substantial design work extending `pubkey-envelope-plugin.md`
+(from a prior session), which had deliberately left the
+`CredentialLookup` interface unimplemented. Discussed two integration
+paths the user was considering — Keycloak-backed trustee selection,
+and OAuth-tied identity — and recommended keeping identity/selection
+(Keycloak's job) cleanly separated from key custody (not Keycloak's
+job). User then floated shardic generating trustee keypairs at
+registration and handing back the private key via a one-time copy
+window; recommended against it (recreates the exact centralized-custody
+exposure the plugin exists to avoid) in favor of client-side-only
+generation (WebCrypto/CLI, or hardware-backed via WebAuthn/tokens for
+less-technical trustees), with the reasoning written up explicitly so
+it doesn't get reinvented later.
+
+That became two new design docs (both proposal-only, no code):
+- `docs/keycloak-credential-lookup.md` — Keycloak scoped to a dedicated
+  trustee group for selection; a separate local key registry (not
+  Keycloak user attributes) for custody; OIDC-authenticated
+  registration with proof-of-possession, client-side keygen only;
+  OAuth dependency explicitly scoped to registration/rotation, never
+  wrap or recovery.
+- `docs/envelope-delivery.md` — closes the gap `pubkey-envelope-plugin.md`
+  left open (how does a trustee actually get their `.envelope` file):
+  a pull-based, single-read, OIDC-authenticated drop point modeled on
+  Vault-style response-wrapping, keyed by trustee_id, "exactly once"
+  redemption as a detection (not prevention) mechanism.
+
+README updated: both docs linked in the `docs/` file list, plus a new
+paragraph tying all three envelope docs together as one proposed
+register → wrap → deliver → recover lifecycle. Two commits
+(`0c40d40`, `992097a`), each pushed immediately after creation.
+
+## State at end of session
+
+- `origin/main` tip is `992097a`. Working tree clean, nothing
+  uncommitted.
+- All shardic-envelope design work remains proposal-only — no code
+  changes anywhere in this thread. Three docs now exist:
+  `pubkey-envelope-plugin.md` (prior session), `keycloak-credential-lookup.md`,
+  `envelope-delivery.md` (this session).
+
+## Possibly worth following up
+
+- None of the three shardic-envelope docs have a reference
+  implementation yet — `CredentialLookup`, `EnvelopeDropPoint`, and the
+  client-side keygen flow are all still just Protocol sketches.
+  Next logical step if this gets built: probably the key registry +
+  registration flow first (smallest, least infra), before drop-point
+  or the actual envelope construction.
+- `envelope-delivery.md` left the "wrap event happened, go check"
+  notification channel explicitly out of scope — will need a decision
+  before this is usable end-to-end even at prototype stage.
+- Same longstanding carryover: no automated test suite; Windows
+  `.exe`s still only CI-verified.
+
+---
+
 # Session notes — 2026-07-13 (downloaded v1.2.1 release binaries locally)
 
 ## What happened
