@@ -1,3 +1,53 @@
+# Session notes — 2026-07-14 (notification-channel concept paper)
+
+## What happened
+
+Direct continuation of the entry below (same session) — user came back
+and asked to actually draft the notification-channel concept paper
+that had just been deferred as TBD.
+
+Wrote `docs/notification-channel-concept.md`, deliberately pitched one
+step earlier than the other three shardic-envelope docs: it doesn't
+pick a channel or sketch a `Protocol`, just lays out the need, options,
+and design-choice drivers, matching the user's own framing ("need,
+options, and design choice drivers"). Covers both notification needs
+`envelope-delivery.md` had named but not designed — the trustee-facing
+"go pull your envelope" ping and the separate operator-facing
+"unredeemed drop expired" alert — as a comparison table, then walks
+through six trustee-facing channel options (Keycloak email attribute,
+push, chat-ops webhook, SMS, passive check-on-next-login, generic
+operator-supplied webhook) and two operator-facing options (log line,
+active alert), each with tradeoffs tied back to constraints the prior
+three docs already fixed (no secret in payload, no new dependency at
+recovery time, identity model tracks no contact address). Closes with
+explicit design-choice drivers (existing trusted contact channel?,
+TTL urgency, trustee technical sophistication, willingness to take a
+new external dependency, metadata sensitivity) and an open-questions
+list.
+
+Updated README: added the new doc to the `docs/` list and extended the
+existing four-doc-lifecycle... now five-doc paragraph (register → wrap
+→ deliver → recover) to note delivery depends on a channel being
+picked from the new doc. Committed both files together as `5dc552b`,
+pushed.
+
+## State at end
+
+Working tree clean, `origin/main` up to date at `5dc552b`. Four
+shardic-envelope docs now exist total (`pubkey-envelope-plugin.md`,
+`keycloak-credential-lookup.md`, `envelope-delivery.md`,
+`notification-channel-concept.md`); none implemented.
+
+## Possibly worth following up
+
+- The concept paper stops short of picking a channel on purpose — next
+  step if this keeps moving is an actual design doc (like the other
+  three) once a channel is chosen, with a real `Protocol` sketch.
+- Same longstanding carryovers: no automated test suite; Windows
+  `.exe`s only CI-verified, never hand-run.
+
+---
+
 # Session notes — 2026-07-14 (reconciled diverged local main; envelope-delivery notification discussion)
 
 ## What happened
