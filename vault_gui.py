@@ -17,10 +17,12 @@ reimplementation of it.
 import importlib.util
 import os
 import queue
+import subprocess
 import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import font as tkfont
 
 if importlib.util.find_spec("cryptography") is None:
     # Tkinter may not even be usable yet if this is missing, but try to
@@ -1125,10 +1127,55 @@ class ShardicPrimeTab(ttk.Frame):
         notebook.add(RecoverPrimeTab(notebook), text="Recover")
 
 
+_TK_NAMED_FONTS = [
+    "TkDefaultFont", "TkTextFont", "TkFixedFont", "TkMenuFont",
+    "TkHeadingFont", "TkCaptionFont", "TkSmallCaptionFont",
+    "TkIconFont", "TkTooltipFont",
+]
+
+
+def _apply_hidpi_scaling(root):
+    """Tk on X11 reports a flat 96 DPI regardless of the desktop's actual
+    scaling preference -- unlike GTK/Qt, it won't pick up a 2x HiDPI
+    setting on its own, so fonts/widgets render tiny on a scaled desktop.
+    Best-effort: match Tk's scaling to Xft.dpi if xrdb reports one;
+    silently do nothing otherwise (e.g. on Windows, where Tk already
+    queries the real system DPI correctly).
+
+    Tk auto-shrinks its named fonts' point size whenever 'tk scaling'
+    changes, to keep their on-screen pixel size constant -- so those
+    named fonts (everything not given an explicit font=(...) override)
+    need their original point sizes reasserted afterward, or the window
+    just gets bigger padding around still-tiny text.
+    """
+    try:
+        output = subprocess.run(
+            ["xrdb", "-query"], capture_output=True, text=True, timeout=2
+        ).stdout
+        dpi = None
+        for line in output.splitlines():
+            if line.startswith("Xft.dpi:"):
+                dpi = float(line.split(":", 1)[1].strip())
+                break
+        if not dpi:
+            return
+        original_sizes = {}
+        for name in _TK_NAMED_FONTS:
+            try:
+                original_sizes[name] = tkfont.nametofont(name).actual()["size"]
+            except tk.TclError:
+                pass
+        root.tk.call("tk", "scaling", dpi / 72.0)
+        for name, size in original_sizes.items():
+            tkfont.nametofont(name).configure(size=size)
+    except Exception:
+        pass
+
+
 def main():
     root = tk.Tk()
     root.title(APP_TITLE)
-    root.geometry("620x640")
+    _apply_hidpi_scaling(root)
 
     try:
         style = ttk.Style()
@@ -1146,6 +1193,16 @@ def main():
     notebook.add(create_tab, text="Create Vault")
     notebook.add(recover_tab, text="Recover Vault")
     notebook.add(shardic_prime_tab, text="Shardic-Prime")
+
+    # Size to the actual rendered content rather than a guessed constant --
+    # theme/font rendering (e.g. the AppImage's bundled Tk) can need more
+    # room than a fixed default accounts for. Cap to the screen so it never
+    # opens larger than the display.
+    root.update_idletasks()
+    width = min(root.winfo_reqwidth(), int(root.winfo_screenwidth() * 0.9))
+    height = min(root.winfo_reqheight(), int(root.winfo_screenheight() * 0.9))
+    root.geometry(f"{width}x{height}")
+    root.minsize(width, height)
 
     root.mainloop()
 
