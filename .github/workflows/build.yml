@@ -57,6 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: VaultTool-windows-x64
+          retention-days: 5
           path: |
             dist/VaultTool-GUI.exe
             dist/vault-create.exe
@@ -92,6 +93,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: VaultTool-linux-x64
+          retention-days: 5
           path: |
             dist/VaultTool-GUI
             dist/vault-create
