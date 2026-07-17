@@ -1,3 +1,118 @@
+# Session notes — 2026-07-17 (shardic-envelope Keycloak demo: first real implementation)
+
+## What happened
+
+Direct continuation of the same day's earlier session (CI/GUI/v1.2.2 work,
+entry below) — user asked for a portable containerized demo of
+shardic-prime backed by Keycloak (7 candidate trustees, 5 selected,
+threshold 3). Talked through the design live rather than jumping straight
+to implementation, and it grew substantially: the interesting demo isn't
+"type 3 codewords into a prompt," it's independent trustee devices
+cooperating without any single party seeing another's codeword — which
+meant building a first real implementation of **shardic-envelope**,
+previously just two unimplemented design docs
+(`docs/pubkey-envelope-plugin.md`, `docs/keycloak-credential-lookup.md`).
+
+**The key design insight** (reached via direct back-and-forth, not
+pre-decided): `vault_core_prime.reconstruct_and_decrypt_prime` already
+takes an already-matched `mask`/`pool_shares`, not codewords — so a
+trustee's local app can decrypt its pubkey-wrapped codeword, immediately
+run the existing *unmodified* `try_match_word_prime` to derive its
+"shard" (new term: the post-match mask or `(x,y)` pool point), and send
+back only the shard. The combiner never sees a codeword from anyone.
+Zero changes to any core crypto module — shardic-envelope is a pure
+bolt-on. User also proposed the "self-addressed envelope" pattern
+(combiner bundles its own pubkey inside each envelope it sends a trustee,
+so the reply-wrap step needs no separate lookup) — validated as sound
+(forging the bundled key requires already controlling the delivery
+channel).
+
+Used `EnterPlanMode` for this given the scope — Explore agent gathered
+exact function signatures/return shapes from `vault_core_prime.py` and
+confirmed no existing Docker/Keycloak infra existed anywhere in the repo;
+a Plan agent turned the agreed architecture into concrete file layout,
+Dockerfiles, and API routes; verified several of its claims directly
+against source before finalizing (import graph, exact byte shapes of
+`try_match_word_prime`'s return values, `krypt_container.read_krypt`'s
+signature) rather than trusting the agent output blindly.
+
+**Built:**
+- `shardic_envelope_crypto.py` (repo root, sibling to the other core
+  modules so both container images can `COPY` it) — X25519 + HKDF-SHA256
+  + AES-256-GCM hybrid envelope wrap/unwrap, keypair
+  generate/persist/fingerprint, shard serialize/deserialize. Has a
+  `__main__` self-test mirroring `gf256_sss_prime.py`'s existing pattern.
+- `demo/` — docker-compose stack: Keycloak (26.7, `start-dev`,
+  realm-export.json with 7 users + `shardic-trustees` group + 2 OIDC
+  clients), a Flask **combiner** service (registers trustee pubkeys,
+  creates the vault, wraps+destroys codewords, combines shards via the
+  unmodified `reconstruct_and_decrypt_prime`), and 5 named trustee
+  containers (`alice`..`erin`) with 2 more (`frank`/`grace`) defined but
+  gated behind a compose `candidates` profile — "5 of 7 selected" is
+  literally which named services get started. Trustee slot assignment
+  (prime vs. pool) is deterministic: alphabetically-first registered
+  username is prime.
+
+**Verified end-to-end against real running containers** (not just
+written): full registration → vault-create → wrap-then-destroy →
+recovery cycle with byte-for-byte correct output; the threshold-3 proof
+(paused `dave`+`erin`, recovery still succeeded via `alice`+`bob`+`carol`
+only); several negative paths (premature finalize, duplicate
+vault-create, missing admin token, unregistered trustee polling,
+insufficient-trustees vault-create) all returning clean errors, not
+crashes.
+
+**Two real bugs found and fixed during testing** (not anticipated in the
+plan): Keycloak direct-grant token requests were missing the `openid`
+scope, so the `userinfo` endpoint rejected them with 403 (`scope: "openid"`
+now included in both `authenticate()` calls) — this actually blocked
+trustee registration entirely until fixed. Combiner's `print()` log
+output wasn't flushing inside the container; fixed with
+`PYTHONUNBUFFERED=1` in both Dockerfiles.
+
+**Infra note for next time**: this machine's `docker` binary is a shim
+that execs `podman` directly, so the old `docker-compose` (v1.29,
+docker-py-based) couldn't connect until the rootless podman API socket
+was enabled: `systemctl --user enable --now podman.socket`, then
+`DOCKER_HOST=unix:///run/user/1000/podman/podman.sock docker-compose ...`.
+Wasn't needed for anything else this session, but will be again for any
+future container work here.
+
+Also committed the pre-existing untracked `graphics/` folder (shardic
+logo + two branding images, checked contents before pushing — nothing
+sensitive) at the user's explicit request, separate commit from the demo
+work.
+
+## State at end
+
+Working tree clean. `origin/main` at `14fb496`. Commits this part of the
+session: `c9b7f93` (shardic-envelope demo) and `14fb496` (graphics). Full
+demo stack was torn down (`docker-compose down -v` + built images
+removed) after verification — nothing left running.
+
+## Possibly worth following up
+
+- Demo hasn't been run on a clean machine from scratch by anyone but this
+  session — first real run should double-check the `quay.io/keycloak/keycloak:26.7`
+  pull + full `docker-compose up` from `demo/README.md`'s documented steps
+  works without the podman-socket workaround above (a real Docker Engine
+  host shouldn't need it at all).
+- Open items already flagged in the plan itself, not fixed: Keycloak
+  Admin API scoping is realm-wide `view-users` rather than fine-grained
+  group-scoped permissions; Direct Access Grant with plaintext demo
+  passwords stands in for a real interactive/device-code OIDC flow; no
+  fingerprint cross-check of the bundled combiner public key against
+  Keycloak.
+- `shardic_envelope_crypto.py` is written to be reusable outside the demo
+  (a real future `shardic_envelope.py` per `pubkey-envelope-plugin.md`'s
+  own open question about a standalone script) — nothing currently
+  promotes it out of demo-only usage.
+- Same longstanding carryovers: no automated test suite; Windows `.exe`
+  still pending backfill for `v1.2.2` (scheduled cloud-agent check was
+  armed for 2026-07-18T02:00:00Z, see prior entry).
+
+---
+
 # Session notes — 2026-07-17 (GitHub Actions storage cleanup; GUI window/HiDPI fix; v1.2.2 release)
 
 ## What happened
