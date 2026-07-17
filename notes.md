@@ -1,3 +1,83 @@
+# Session notes — 2026-07-17 (GitHub Actions storage cleanup; GUI window/HiDPI fix; v1.2.2 release)
+
+## What happened
+
+Three-part session, all shipped:
+
+1. **Actions storage quota exhausted.** `.github/workflows/build.yml`
+   uploaded full Windows+Linux PyInstaller build outputs on every push
+   to main with no `retention-days` set (90-day default), leaving 116
+   artifacts (~5GB) — the entire quota. Deleted all 116 via the GitHub
+   API and added `retention-days: 5` to both `upload-artifact` steps
+   (`4bb5e20`). **Caveat that bit us later:** GitHub only recalculates
+   quota usage every 6-12 hours, so CI kept failing on the *same*
+   "quota hit" error for hours after the real usage was already zero.
+
+2. **GUI window too small / tiny fonts.** `vault_gui.py` had a
+   hardcoded `620x640` geometry that cut off the right-hand
+   File/Folder buttons and the Create Vault button on some renders.
+   Fixed by sizing to actual required content
+   (`update_idletasks()` + `winfo_reqwidth/reqheight`, capped to 90%
+   of screen size) instead of a guessed constant. Separately diagnosed
+   (and fixed) a HiDPI font bug: Tk on X11 ignores the desktop's
+   `Xft.dpi` scaling preference by default (stays at a flat 96 DPI
+   even when the desktop is set to 192/2x), *and* Tk silently
+   auto-shrinks its named fonts' point size to cancel out any `tk
+   scaling` change — so matching `Xft.dpi` alone isn't enough; the
+   named fonts' original point sizes have to be reasserted afterward
+   too, confirmed empirically before writing the fix. Both landed in
+   `82b30b8`. Verified live via Xvfb-less real-display testing
+   (`DISPLAY=:0`, screenshotted with ImageMagick `import`) — both
+   against the raw script and against the rebuilt AppImage binary
+   itself, not just the source.
+
+3. **Released v1.2.2.** Rebuilt both AppImages locally
+   (`./build_appimage.sh`), tagged `v1.2.2`, pushed the tag to trigger
+   the normal CI release flow — but CI failed at the `upload-artifact`
+   step on both platform jobs due to the stale quota cache from #1, so
+   the `release` job (which attaches binaries to a GitHub Release)
+   never ran. Worked around it: manually created the `v1.2.2` GitHub
+   Release via `gh release create` and attached the two *locally*-built
+   Linux AppImages directly (release-asset upload isn't gated by the
+   Actions artifact-storage quota, only workflow artifact upload is).
+   No Windows `.exe` in this release — can't cross-compile it locally,
+   and CI is what normally produces it.
+
+Also created a one-time scheduled cloud-agent routine (`trig_01XwUewWkpqMnUj29RkaUtzs`,
+"shardic v1.2.2 Windows backfill check") to fire at 2026-07-17 21:00
+CDT / 2026-07-18T02:00:00Z — report-only, checks whether the quota
+cache has cleared and whether `v1.2.2` still lacks the Windows build,
+and if so gives the exact command to finish the backfill. Deliberately
+scoped to check-and-report, not to re-run CI or touch the release
+itself.
+
+## State at end
+
+Working tree clean except an untracked `graphics/` dir (pre-existing,
+not touched — logo/screenshot assets, left alone per this skill's
+"don't touch unrelated files" rule). `origin/main` at `82b30b8`. Tag
+`v1.2.2` pushed; GitHub Release `v1.2.2` published with
+`VaultTool-x86_64.AppImage` and `VaultToolGUI-x86_64.AppImage` attached,
+Windows `.exe` still outstanding pending the quota-recalculation
+backfill.
+
+## Possibly worth following up
+
+- **Windows `.exe` backfill for v1.2.2** — pending the scheduled check
+  above; if quota's clear, `gh workflow run build.yml --ref v1.2.2
+  --repo splashd1/shardic` (or `gh run rerun <run-id>`) should let CI
+  finish the job and attach the Windows asset to the existing release.
+- Consider whether 5-day artifact retention is the right number long
+  term, or whether ordinary (non-tag) pushes to main should skip the
+  artifact upload entirely, now that the immediate quota crisis is
+  resolved — flagged but not changed this session, kept minimal per
+  the original ask.
+- Same longstanding carryovers: no automated test suite; Windows
+  `.exe`s only CI-verified (when CI works), never hand-run on real
+  Windows hardware.
+
+---
+
 # Session notes — 2026-07-14 (notification-channel concept paper)
 
 ## What happened
