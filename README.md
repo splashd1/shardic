@@ -93,6 +93,7 @@ government and business scenarios.
   `notification-channel-concept.md` is picked to tell them it's there) →
   **recover** (trustee decrypts locally and types the resulting
   codeword into `vault_recover.py`/the GUI, unchanged from today).
+- [`docs/shardic-envelope-explainer.html`](docs/shardic-envelope-explainer.html) — a static, illustrated walkthrough of the shardic-envelope ceremony's four phases (Formation, Protected & Dormant, Threshold-Proof, Finalize & Verify), for anyone who can't run the live `demo/` stack. Open it directly in a browser.
 - [`docs/shardic_white_paper.v.1.2.md`](docs/shardic_white_paper.v.1.2.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
