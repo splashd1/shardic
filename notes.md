@@ -1,3 +1,102 @@
+# Session notes — 2026-07-18 (ceremony-dashboard mockups combined; trustee-registration model clarified; new open question added)
+
+## What happened
+
+Direct continuation of the prior entry (same demo stack still running on
+this machine, `zenduo`) — mostly dashboard-mockup iteration plus one
+real doc edit, no application code touched.
+
+**Dashboard mockups: added a 4th snapshot and combined all of them.**
+Sketched a **Finalize & Verify** Artifact snapshot (the payoff moment —
+recovered-vs-original `diff -r` pipeline panel, a MATCH result banner,
+trustee nodes settled into a static "contributed, done" state instead
+of animated exchange, dave/erin relabeled "not needed" rather than
+"paused," footer down to a single "Start New Ceremony" reset action).
+
+Then, per explicit request, **combined all four snapshots into one
+Artifact** using a radio-input tab pattern (CSS-only phase switching,
+no framework) with Prev/Next buttons and a "Phase X of 4" indicator.
+Split the earlier "vault formation" content into two distinct phases
+rather than one, since the user's original ask was specifically to
+separate the *transformation* from the *protected termination state*:
+**Formation** (retrospective, pipeline panel open/prominent, no CTA)
+and **Protected & Dormant** (callout leads, pipeline collapses into a
+`<details>` recap, "Start Recovery" lives here as the actual decision
+point). Merging required actually reconciling real CSS conflicts across
+the three source files — `.callout`, `.pipeline__arrow::after`,
+`.stepper__lock`, `.ctrl--done`/`.ctrl--primary` all had brass-vs-green
+definitions from different files that would have silently collided if
+just concatenated; resolved with explicit `--live` modifier classes.
+Final combined artifact: `ceremony-dashboard-combined.html` (all prior
+individual snapshots superseded by this one). All of this remains
+Artifact-only — no code in the repo, no SSE, no live combiner wiring;
+that stays an explicitly reserved future option per the user's
+instruction.
+
+**Trustee-registration model: answered a real conceptual question by
+reading the actual demo code**, not guessing. Confirmed from
+`demo/trustee/app.py`/`demo/combiner/app.py`: registration (keypair
+generate/persist → Keycloak auth → push pubkey to combiner) happens at
+trustee container startup, fully independent of and prior to any vault
+creation event — `do_create_vault` actually requires all 5 to already
+be registered. Keycloak never sees the public key at all, only verifies
+identity; the pubkey goes straight to the combiner. The registry
+(`STATE["trustee_pubkeys"]`, keyed by Keycloak `sub`) is per-trustee,
+not per-vault — the demo's "only one vault at a time" limit is a scoping
+simplification, not a cryptographic pinning of the key to one vault.
+User confirmed this matches their intended model: pubkey submitted once
+at registration, reusable for any future vault where that trustee is
+selected.
+
+**That surfaced a genuinely new open question**, which the user asked
+to record for later: how does a trustee's app know *which*
+combiner/vault-holder to register with (today it's a hardcoded
+`COMBINER_URL` env var per demo container), and is registration
+trustee-initiated self-service or combiner/operator-issued invitation?
+Added as a new bullet to `docs/keycloak-credential-lookup.md`'s "Open
+questions" list, noting it interacts with the already-open
+proof-of-possession-nonce question (an invitation could double as the
+nonce carrier).
+
+## State at end
+
+**Uncommitted change on this machine:** `docs/keycloak-credential-lookup.md`
+(the new open-question bullet above) — written but not yet committed;
+the user hadn't confirmed committing it before this sync ran, so it was
+deliberately left alone per this skill's "don't touch unrelated
+uncommitted changes" rule. `origin/main` is otherwise at `0d2f21a`. The
+demo stack is still running on this machine from the prior entry
+(Keycloak + combiner + 5 trustees, vault `r4aat36ygfrb6bqk.krypt`
+created, nothing paused, recovery never triggered this run) — still not
+torn down.
+
+The four ceremony-dashboard Artifacts (formation/dormant/threshold/
+finalize, plus the final combined one) exist only as Claude Artifact
+URLs in this conversation, same caveat as the prior entry: not visible
+from a different machine/session without re-describing or rebuilding.
+
+## Possibly worth following up
+
+- **Commit the `docs/keycloak-credential-lookup.md` open-question
+  addition** next session if the user still wants it — it's currently
+  just sitting in the working tree.
+- The demo stack has now been left running across two consecutive
+  session-notes entries on this machine — worth actually tearing down
+  (`docker-compose --profile candidates down -v`) if nobody's using it,
+  or explicitly deciding to keep it up as a standing dev instance.
+- If the dashboard-combining work continues: next natural step flagged
+  in conversation is either further visual iteration or the real
+  SSE-backed build (event bus in `demo/combiner/app.py`, `GET /events`,
+  heartbeat-based pause detection, static frontend reusing the now-
+  validated palette/type system) — deliberately not started yet.
+- The new "combiner discovery + registration initiation" open question
+  is unresolved by design — flagged as a future discussion topic, not
+  something decided this session.
+- Same longstanding carryovers: no automated test suite; Windows `.exe`
+  backfill for v1.2.2 still pending.
+
+---
+
 # Session notes — 2026-07-17 (fresh-machine Docker setup, demo dry-runs, ceremony-dashboard concept mockups)
 
 ## What happened
