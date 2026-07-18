@@ -1,3 +1,112 @@
+# Session notes — 2026-07-17 (fresh-machine Docker setup, demo dry-runs, ceremony-dashboard concept mockups)
+
+## What happened
+
+New machine (Ubuntu on WSL2, hostname `zenduo`) picking up the
+shardic-envelope Keycloak demo from the entry below — this clone had no
+container runtime at all yet, so first task was Docker setup.
+`systemd=true` was already in `/etc/wsl.conf` (genuine systemd as PID 1),
+so recommended and installed native Docker Engine via Ubuntu's own
+`docker.io`/`docker-compose-v2` packages rather than Docker's official
+apt repo (no third-party key/repo needed, versions were current, and it
+sidesteps entirely the podman-shim workaround the *other* machine needed).
+One wrinkle: `docker-compose-v2` only installs the `docker compose`
+(space) plugin, but `demo/README.md` documents the hyphenated
+`docker-compose` throughout — added a one-line `/usr/local/bin/docker-compose`
+shim exec'ing `docker compose "$@"` so the README's commands work
+verbatim. Also hit (and worked around) a mid-session-only quirk: the
+Bash tool's persistent shell process was spawned before `usermod -aG
+docker` took effect, so it never picks up the new group — used `sg
+docker -c "..."` for every docker command afterward rather than
+depending on a shell restart.
+
+Then ran the demo README's walkthrough for real, twice:
+1. **Full walkthrough end-to-end** (steps 1–10): Keycloak up, 5 trustees
+   registered, vault created, codewords-destroyed verified, threshold-3
+   proven live (paused dave/erin, recovered via alice+bob+carol only),
+   byte-for-byte `diff -r` match, full teardown (`--profile candidates
+   down -v`). Found one real doc bug along the way: step 9's verify
+   command globbed `/data/recovered/*/sample-secret`, but the combiner
+   actually writes straight to `/data/recovered/sample-secret` — no
+   session-id subdirectory exists. Fixed the README line, committed
+   (`42e504e`), pushed at user's request.
+2. **Partial re-run stopping at vault creation** (steps 1–4 only), per
+   user's explicit ask to "restart the demo at step 1 - create vault" —
+   fresh registrations (new keypairs/fingerprints), new vault
+   (`r4aat36ygfrb6bqk.krypt`), left running (not torn down) for the next
+   part of the session.
+
+**Then pivoted to a presentation-dashboard design exercise** (no code —
+pure Artifact mockups, explicitly "iterate first" before any real
+build): the user wants a future variant of the demo that's visually
+narrated for a live audience rather than curl-driven, with the demo's
+deliberate shortcuts called out inline rather than left implicit. Landed
+on a concept — an SSE-driven web dashboard bolted onto the existing
+Flask combiner (zero core-crypto changes, matches the project's
+established "pure bolt-on" pattern) — and built three static Artifact
+snapshots to pin down the visual language before any backend work:
+- **Threshold-proof snapshot** (first one): hub-and-spoke SVG, combiner
+  center, 5 trustee nodes, live/paused node+edge states, animated
+  shard-token travel, ceremony log, "demo-only shortcuts" sidebar lifted
+  from the README, presenter-control buttons wrapping the existing
+  `/admin/*` routes. Design system: ink/parchment palette, brass accent
+  reserved for the prime trustee + sealed/dormant states, serif display
+  + humanist sans + monospace-for-fingerprints type stack (deliberately
+  chosen over generic Inter/Space-Grotesk defaults).
+- **Initiation snapshot** (user asked to see the steps *leading up to*
+  vault creation): reused real data from the actual live re-run above.
+  Added on request: a "vault formation" pipeline panel showing the
+  actual crypto transformation at the combiner (plaintext →
+  AES-256-GCM → `.krypt`; DEK → Shamir split GF(256) D=3-of-5 → 5
+  wrapped envelopes), plus an explicit "Phase 1 complete — protected,
+  dormant state" callout and a phase-boundary lock icon straddling the
+  stepper, making the point that this state has no expiry and can sit
+  untouched indefinitely before an operator ever triggers Phase 2.
+- **Threshold-proof snapshot, v2** (extending the same treatment
+  forward): the pipeline panel reversed (3 shards in → Shamir combine →
+  DEK → AES-256-GCM decrypt → recovered plaintext), the phase-boundary
+  lock now shown open/green ("just crossed"), and a parallel callout
+  ("still nothing is decrypted until the third shard lands") so the
+  three snapshots read as one continuous story rather than three
+  separate tools.
+
+All three are unpublished-to-repo Artifact mockups only (URLs live in
+this conversation) — no dashboard code, no combiner changes. Session
+ended mid-iteration; user had just asked about a possible fourth
+snapshot (Finalize & Verify) when this sync was requested.
+
+## State at end
+
+Working tree clean, `origin/main` at `42e504e` (the only real commit
+this session — the README path fix). Demo stack is **still running**
+on this machine (`zenduo`): Keycloak + combiner + 5 trustees up, vault
+`r4aat36ygfrb6bqk.krypt` created, nothing paused, recovery not yet
+triggered. The three dashboard mockups exist only as Claude Artifacts
+(not saved as files in the repo) — if picking this up on a *different*
+machine, those Artifact URLs won't be visible; would need to be
+re-described or rebuilt from this summary.
+
+## Possibly worth following up
+
+- If the dashboard concept keeps moving: the natural next design step
+  is a Finalize & Verify snapshot, then likely an actual build —
+  SSE event bus in `demo/combiner/app.py` (instrument the existing
+  register/vault-create/recovery-start/shard-reply/finalize call
+  sites), a `GET /events` route, a heartbeat thread inferring
+  "paused" from missed trustee polling (deliberately not exposing
+  Docker control to the browser), and a static HTML/JS frontend using
+  the palette/type system already validated across the three mockups.
+- This machine's demo stack was left running, not torn down — a future
+  session (or `docker-compose --profile candidates down -v`) should
+  clean it up if nobody's actively using it.
+- Same carryovers as the entry below: demo's known shortcuts
+  (Direct Access Grant w/ plaintext demo password, realm-wide
+  `view-users` role, no combiner-pubkey fingerprint cross-check against
+  Keycloak) still unaddressed by design, not oversight; no automated
+  test suite; Windows `.exe` backfill for v1.2.2 still pending.
+
+---
+
 # Session notes — 2026-07-17 (shardic-envelope Keycloak demo: first real implementation)
 
 ## What happened
