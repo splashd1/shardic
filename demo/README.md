@@ -156,7 +156,7 @@ Expect 200 with `"trustees_used": ["alice", "bob", "carol"]` — proving
 
 ```sh
 docker exec $(docker-compose ps -q combiner) sh -c \
-  'diff -r /data/sample-secret /data/recovered/*/sample-secret && echo "MATCH"'
+  'diff -r /data/sample-secret /data/recovered/sample-secret && echo "MATCH"'
 ```
 
 **10. Tear down** (removes volumes too — a fresh `.env`/re-run starts clean).
