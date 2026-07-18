@@ -1,4 +1,149 @@
-# Session notes — 2026-07-18 (ceremony-dashboard mockups combined; trustee-registration model clarified; new open question added)
+# Session notes — 2026-07-18 (live ceremony dashboard built; nomenclature review; SSS write-up and slides reconciled from two parallel efforts)
+
+## What happened
+
+Direct continuation of the prior entry's dashboard-mockup work, but this
+session moved from mockup to real, verified implementation, then branched
+into a nomenclature exercise and a white-paper/slide-deck addition that
+turned into an unexpected reconciliation exercise.
+
+**Built the real live ceremony dashboard** (`demo/combiner/app.py` +
+new `demo/combiner/dashboard/`): an SSE event bus (`GET /events` with a
+`snapshot` event for mid-ceremony reconnects), heartbeat-based
+live/paused trustee tracking derived from existing poll traffic (no
+trustee-side changes needed), a new `/admin/recovery/verify` route
+doing the byte-for-byte comparison the README previously only did by
+hand, and a plain HTML/CSS/JS frontend. Caught and fixed a real bug
+before shipping: the snapshot logic re-derived "who's the prime
+trustee" by re-sorting *current* registrations, which would silently
+mislabel it if `frank`/`grace` ever registered after the vault existed
+— fixed by persisting the actual assignment at creation time
+(`STATE["vault_assignment"]`). **Verified end-to-end against real
+running containers**, not just code review: registration, vault
+creation, pause-triggered heartbeat transitions, threshold-3 recovery,
+finalize, verify, and snapshot-replay-on-reconnect all confirmed live;
+stack torn down cleanly after. Committed `2d130a9`.
+
+**Published a static explainer** (`docs/shardic-envelope-explainer.html`)
+as a substitute for the live demo — same 4-phase structure, deliberately
+different visual language (cool graphite/teal, not the dashboard's
+ink-parchment-brass) to avoid the AI-generated-design clichés flagged
+by the artifact-design skill. Committed `ccef81e`.
+
+**Drafted two project-specific subagents** (`.claude/agents/
+crypto-core-reviewer.md`, `release-runner.md`), grounded in real
+incidents from this repo's history (the `resolve_kdf` bug, the Actions
+artifact-quota outage, Windows-build-parity gaps) rather than generic
+templates. Committed `a49ba82`.
+
+**Nomenclature review**, per explicit user request: surveyed actual
+code usage (not invented) to produce a canonical glossary —
+`.claude/skills/shardic-nomenclature/SKILL.md` (loads automatically for
+future naming-sensitive work) and `docs/nomenclature.md` (human-readable
+table twin). Key finding: **share** (pre-match, at rest in `.krypt`
+metadata) and **shard** (post-match, in motion during shardic-envelope
+recovery) are near-homophones the codebase already commits to with
+genuinely different meanings — flagged as the one pair to never
+conflate. Also flagged **"ceremony"** as a term that isn't in the
+original codebase at all — it emerged organically in this session's
+own dashboard/explainer work and was already spreading unrecorded;
+recommended for formal adoption but left as an explicit recommendation
+pending sign-off, not documented fact. Committed `497ade9` together
+with white paper §1.4 (see below).
+
+**White paper + slides, which turned into a reconciliation exercise.**
+Added §1.4 "How Threshold Secret Sharing Works, Conceptually" to
+`docs/shardic_white_paper.v.1.2.md` — plain-language geometric
+intuition (line/curve needs N points) placed before the existing
+precise §3.2 mechanics, per user's explicit steer. Regenerated the
+`.docx` via pandoc (not installed on this machine initially; user
+installed it mid-session after I gave them the command — the required
+fix is running pandoc *from* `docs/` so relative `./media/` image
+paths resolve, a gotcha from prior sessions that bit this one too on
+the first attempt).
+
+Built SSS background slides as an HTML/SVG Artifact first (no
+slideshow file existed in the repo at that point). **Then, mid-session,
+real files started appearing on disk that weren't mine**:
+`docs/shardic_whitepaper_presentation1.2.1.pptx` (a real 15-slide
+companion deck, apparently the user's own, that had just never been
+committed) and later `docs/sss_explained_for_shardic.md` +
+`docs/shardic_sss_background_slides.pptx` (an independent SSS
+explainer/deck covering the same brief, evidently from a parallel
+session or tool running concurrently). Flagged each discovery rather
+than silently overwriting, per instinct to investigate unfamiliar
+files. User's direction evolved across the session: first "leave both
+for now," then explicit asks to reconcile each pair.
+
+**Reconciled the two markdown write-ups** into one
+`docs/sss_explained_for_shardic.md` — merged the geometric intuition
+(mine) as a new §2 leading into the other version's precise polynomial
+construction, folded the "no partial progress" analogy into the
+information-theoretic argument, and fixed a factual slip caught while
+merging (shardic-prime supports exactly *one* mandatory trustee, not
+"one or more"). White paper's §1.4 kept as its own short in-context
+bridge (different job than a standalone reference) but now links to
+the merged doc. Committed `849fb61`.
+
+**Reconciled the two slide decks**, which took real work beyond a
+simple merge: checking both new decks' content against the *existing*
+deck's own slides (not just against each other) turned up that most of
+both efforts duplicated content already there — slide3 (1.2) already
+had the exact 3-of-5 threshold dot diagram, slide8 (3.1-3.2) already
+had the polynomial construction and the *exact same*
+information-theoretic callout text as the white paper, slide9 (3.3-3.4)
+already covered zero-leakage indexing. Only one slide earned its place
+(the pure geometric, no-formula intuition) — rebuilt from the pristine
+original rather than patching the first attempt. That rebuild also
+caught and fixed a real bug the first attempt introduced and never
+verified: this deck's footer page numbers are **hardcoded plain text,
+not auto-numbering fields**, so inserting slides without updating every
+subsequent slide's footer silently broke the count. Fixed by
+locating the footer shape by its fixed position (`x="11430000"
+y="6537960"`) and incrementing every affected slide's number.
+`docs/shardic_sss_background_slides.pptx` deleted (fully superseded).
+Committed `297a8af`.
+
+**Actually verified the render**, not just the XML structure — no
+`libreoffice`/`soffice` on this machine initially; asked the user, who
+installed `libreoffice-impress` mid-session. Converted to PDF and
+rasterized via `ghostscript` (no `pdftoppm` available either) to
+confirm visually: the new slide renders correctly, styling matches the
+deck's actual navy/Cambria/Calibri system, and the footer renumbering
+took effect in the real output, not just the source XML.
+
+Also removed stray `demo/combiner/__pycache__` (already gitignored,
+just local cruft) as explicit end-of-session cleanup.
+
+## State at end
+
+Working tree clean, `origin/main` at `297a8af` before this sync commit.
+Tooling now installed on this machine (`zenduo`) that wasn't at session
+start: `pandoc`, `libreoffice`/`libreoffice-impress`. Still missing:
+`pip`/`venv` (blocked an attempt to use `python-pptx`; worked around
+via hand-built OOXML instead — see the two `reconcile_*.py` scripts
+that lived in scratchpad, not committed anywhere, if this pattern is
+needed again). Demo stack fully torn down, nothing left running.
+
+## Possibly worth following up
+
+- The **"ceremony" naming recommendation** in the nomenclature skill is
+  still unconfirmed — worth an explicit yes/no next time naming comes
+  up, since it's already spreading into code/docs either way.
+- If the parallel-session pattern that produced the competing SSS
+  write-up/deck recurs, worth understanding *why* — was it another
+  Claude Code session on a different machine, a claude.ai conversation,
+  or something else? Not investigated this session, just reconciled
+  around it.
+- The dashboard's SSE/heartbeat work is now fully implemented and
+  verified but has no automated test coverage — still true of the
+  whole project generally (longstanding carryover).
+- Windows `.exe` backfill and no-test-suite are the same longstanding
+  carryovers as every prior entry.
+
+---
+
+
 
 ## What happened
 
