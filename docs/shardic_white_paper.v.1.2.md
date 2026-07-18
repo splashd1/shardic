@@ -261,6 +261,76 @@ threshold-signature schemes (e.g. FROST) or HSM-backed multisig, which
 support key rotation and live quorum that this static, split-once design
 does not attempt to provide.
 
+## 1.4 How Threshold Secret Sharing Works, Conceptually
+
+Section 3.2 gives the precise, byte-by-byte construction. Before that,
+it's worth building the intuition for *why* a threshold scheme works at
+all — because the obvious first guess at how to "split a key into
+pieces" is not what shardic does, and doesn't have the properties §1.2
+just promised.
+
+**The obvious guess, and why it falls short.** Imagine cutting the
+32-byte DEK into four 8-byte chunks and handing one chunk to each of
+four trustees — or the slightly cleverer version, XOR-splitting, where
+each share is random and the last one is defined so that all of them
+XOR back to the key. Both can be made information-theoretically sound
+in the narrow sense that holding fewer than all the pieces reveals
+nothing. But both share the same structural flaw: they are **all-or-nothing**
+schemes. Reconstruction needs every single piece, with no way to ask
+for "any D of T." Lose one trustee, permanently, and the key is gone
+forever — exactly the fragility §1.2 said threshold recovery exists to
+avoid.
+
+**The actual idea: hide the secret as a point only enough hints can
+locate.** Picture the DEK not as a string of bytes but as a single
+point on a graph — specifically, where a straight line crosses the
+vertical axis. Draw that line so it also happens to pass through T
+other points, one assigned to each trustee. Handing a trustee "their"
+point tells them nothing on its own: infinitely many different lines
+pass through any single point, each crossing the axis somewhere
+completely different, so *every* possible secret remains equally
+possible. But hand over any **two** trustees' points together, and
+there is exactly one straight line that passes through both of them —
+which means there is exactly one place it crosses the axis. Two points
+determine a line; that's what makes D = 2 work.
+
+Raise the threshold to three, and the trick generalizes: instead of a
+straight line, use a curve with one more bend (a parabola), which takes
+three points to pin down uniquely rather than two. One or two points
+still leave every possible secret equally plausible — the curve simply
+isn't determined yet. This is the general pattern: a threshold of D is
+implemented as a curve that requires exactly D points to fix, with T
+points handed out, one per trustee, all lying on that same curve.
+Because the curve only needs *any* D of its T points — not a
+particular D, and not all T — the scheme absorbs losing up to T − D
+trustees exactly as §1.2 described, something an all-or-nothing chunk
+or XOR split can never offer.
+
+<table>
+<colgroup>
+<col style="width: 100%" />
+</colgroup>
+<tbody>
+<tr class="odd">
+<td><p><strong>Why partial progress isn't a thing here</strong></p>
+<p>A combination lock rewards partial knowledge — get two of three
+digits right and you are, in a real sense, close. A threshold secret
+share does not work that way. One trustee's point, or even D − 1 of
+them together, doesn't narrow the secret down to a short list of
+likely candidates; it leaves <em>every</em> possible value exactly as
+plausible as before. There is no partial credit, no "getting warmer,"
+and no way to make attempts and rule out candidates one collusion at a
+time — the D<sup>th</sup> point doesn't refine the answer, it is the
+precise moment the answer springs into existence.</p></td>
+</tr>
+</tbody>
+</table>
+
+shardic's actual implementation replaces "a line" or "a curve on a graph"
+with a polynomial of degree D − 1 evaluated over a finite field, applied
+independently to each byte of the DEK — the same idea above, made
+precise and computable. §3.2 picks up exactly there.
+
 # 2. Concept of Operations
 
 This section walks through the tool exactly as an operator experiences
