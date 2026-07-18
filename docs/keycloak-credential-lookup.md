@@ -207,3 +207,19 @@ identity is actually the point.
 - Whether picker UI and registration tool ship as one `shardic_envelope.py`-adjacent
   script or stay split, mirroring the still-open "CLI/GUI surface"
   question in `pubkey-envelope-plugin.md`.
+- **Combiner/vault-holder discovery and registration initiation.** This
+  doc (and the working `demo/` implementation) assume a trustee already
+  knows which combiner to register with — in the demo that's a hardcoded
+  `COMBINER_URL` env var per container. A real deployment needs an
+  actual mechanism for two related but distinct questions: (1) how does
+  a trustee's local app discover *which* combiner/vault-holder instance
+  to register with, when an org may run more than one; and (2) how does
+  that registration get *initiated* — is it trustee-self-service the
+  moment they're added to the `shardic-trustees` group (pull), or does
+  the combiner/operator issue some kind of invitation the trustee acts
+  on (push)? The self-service model risks an unsolicited registration
+  landing at the wrong combiner instance; an invitation model adds a
+  step but gives the combiner an explicit, auditable "I expect this
+  trustee" signal before accepting a key. Unresolved which fits better,
+  and it interacts with the proof-of-possession nonce question above
+  (an invitation could double as the nonce carrier).
