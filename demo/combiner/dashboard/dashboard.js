@@ -40,6 +40,128 @@
     $("ceremony-log").prepend(line);
   }
 
+  // -------------------------------------------------------------- diagram
+
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const diagramSvg = $("ceremony-diagram");
+  const edgesGroup = $("diagram-edges");
+  const tokensGroup = $("diagram-tokens");
+  const trusteesGroup = $("diagram-trustees");
+  const combinerCenter = { x: 260, y: 178 };
+  const diagramNodePositions = new Map();
+  let knownDiagramNodes = new Set();
+
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  }
+
+  function computeDiagramLayout(usernames) {
+    const radius = 135;
+    const n = usernames.length;
+    diagramNodePositions.clear();
+    usernames.forEach((username, i) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * i) / n;
+      diagramNodePositions.set(username, {
+        x: combinerCenter.x + radius * Math.cos(angle),
+        y: combinerCenter.y + radius * Math.sin(angle),
+      });
+    });
+  }
+
+  function renderDiagram() {
+    const usernames = Array.from(state.trustees.keys()).sort();
+    computeDiagramLayout(usernames);
+
+    const primeName = state.vault ? state.vault.prime_trustee : null;
+    const contributed = state.recovery ? state.recovery.repliedUsernames : new Set();
+    const finalizedUsed = state.finalized ? new Set(state.finalized.trustees_used) : null;
+
+    diagramSvg.classList.toggle("is-vault", !!state.vault);
+    diagramSvg.classList.toggle("is-recovering", !!state.recovery && !state.finalized);
+    diagramSvg.classList.toggle("is-done", !!state.finalized);
+
+    edgesGroup.innerHTML = "";
+    for (const username of usernames) {
+      const pos = diagramNodePositions.get(username);
+      const rec = state.trustees.get(username);
+      let cls = "diagram-edge";
+      if (finalizedUsed) {
+        cls += finalizedUsed.has(username) ? " diagram-edge--contributed" : " diagram-edge--paused";
+      } else if (state.recovery) {
+        if (contributed.has(username)) cls += " diagram-edge--contributed";
+        else if (rec.status === "paused") cls += " diagram-edge--paused";
+        else cls += " diagram-edge--active";
+      } else if (state.vault) {
+        cls += " diagram-edge--sealed";
+      } else if (rec.status === "paused") {
+        cls += " diagram-edge--paused";
+      }
+      edgesGroup.appendChild(svgEl("line", {
+        x1: combinerCenter.x, y1: combinerCenter.y, x2: pos.x, y2: pos.y, class: cls,
+      }));
+    }
+
+    const nowKnown = new Set();
+    trusteesGroup.innerHTML = "";
+    for (const username of usernames) {
+      nowKnown.add(username);
+      const pos = diagramNodePositions.get(username);
+      const rec = state.trustees.get(username);
+      const isPrime = username === primeName;
+      const isPaused = rec.status === "paused";
+      const hasContributed = contributed.has(username) || (finalizedUsed && finalizedUsed.has(username));
+      const notNeeded = finalizedUsed && !finalizedUsed.has(username);
+
+      let cls = "trustee-node";
+      if (!knownDiagramNodes.has(username)) cls += " is-entering";
+      if (isPrime) cls += " trustee-node--prime";
+      cls += isPaused ? " trustee-node--paused" : " trustee-node--live";
+      if (hasContributed) cls += " trustee-node--contributed";
+      if (notNeeded) cls += " trustee-node--not-needed";
+      if (state.recovery && !state.finalized && !isPaused && !hasContributed) cls += " trustee-node--pulse";
+
+      const g = svgEl("g", { class: cls, transform: `translate(${pos.x},${pos.y})` });
+      g.appendChild(svgEl("circle", { class: "trustee-node__ring", r: 24 }));
+
+      const label = svgEl("text", { class: "trustee-node__label", y: 4 });
+      label.textContent = username;
+      g.appendChild(label);
+
+      if (isPrime || notNeeded) {
+        const tag = svgEl("text", { class: "trustee-node__tag", y: -30 });
+        tag.textContent = isPrime ? "prime" : "not needed";
+        g.appendChild(tag);
+      }
+
+      const badgePos = svgEl("g", { transform: "translate(0,36)" });
+      const badge = svgEl("g", { class: "trustee-node__badge" });
+      badge.appendChild(svgEl("circle", { r: 7 }));
+      badge.appendChild(svgEl("path", { d: "M-3,0 l2,2.5 l4,-5" }));
+      badgePos.appendChild(badge);
+      g.appendChild(badgePos);
+
+      trusteesGroup.appendChild(g);
+    }
+    knownDiagramNodes = nowKnown;
+  }
+
+  function spawnToken(username) {
+    const pos = diagramNodePositions.get(username);
+    if (!pos) return;
+    const token = svgEl("circle", { class: "diagram-token", r: 5, cx: pos.x, cy: pos.y });
+    const motion = svgEl("animateMotion", {
+      dur: "0.9s",
+      fill: "freeze",
+      path: `M0,0 L${combinerCenter.x - pos.x},${combinerCenter.y - pos.y}`,
+    });
+    token.appendChild(motion);
+    tokensGroup.appendChild(token);
+    motion.addEventListener("endEvent", () => token.remove());
+    setTimeout(() => token.remove(), 1200);
+  }
+
   // ------------------------------------------------------------- rendering
 
   function renderTrustees() {
@@ -132,6 +254,7 @@
     renderShardProgress();
     renderFinalize();
     renderControls();
+    renderDiagram();
   }
 
   // ------------------------------------------------------------ SSE wiring
@@ -194,6 +317,7 @@
         setPhase(3);
         break;
       case "shard_received":
+        spawnToken(data.username);
         if (state.recovery) {
           state.recovery.repliedUsernames.add(data.username);
           state.recovery.poolThreshold = data.pool_threshold;

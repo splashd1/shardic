@@ -25,6 +25,26 @@
 <div class="layout">
   <main class="phases">
 
+    <div class="diagram-panel">
+      <svg id="ceremony-diagram" viewBox="0 0 520 360" role="img" aria-label="Ceremony topology: combiner and trustee nodes">
+        <g id="diagram-edges"></g>
+        <g id="diagram-tokens"></g>
+        <g id="diagram-trustees"></g>
+        <g id="diagram-combiner" transform="translate(260,178)">
+          <circle class="combiner-halo" r="54"></circle>
+          <circle class="combiner-body" r="40"></circle>
+          <g class="combiner-icon combiner-icon--lock">
+            <path class="lock-shackle" d="M-9,-4 v-6 a9,9 0 0 1 18,0 v6" />
+            <rect class="lock-body" x="-12" y="-4" width="24" height="18" rx="3" />
+          </g>
+          <g class="combiner-icon combiner-icon--check">
+            <path d="M-11,0 l7,8 l15,-17" />
+          </g>
+          <text class="combiner-label" y="34">combiner</text>
+        </g>
+      </svg>
+    </div>
+
     <section class="phase" data-phase="1">
       <h2>Formation</h2>
       <p class="phase__lede">Each candidate trustee registers a locally-generated keypair with the combiner

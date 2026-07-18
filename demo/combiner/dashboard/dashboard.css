@@ -130,6 +130,177 @@ code {
   .layout { grid-template-columns: 1fr; }
 }
 
+/* ----------------------------------------------------------------- diagram */
+
+.diagram-panel {
+  background: #fffdf7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.5rem 0;
+  margin-bottom: 1.5rem;
+}
+
+#ceremony-diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.combiner-halo {
+  fill: var(--brass-bg);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#ceremony-diagram.is-vault .combiner-halo { opacity: 0.55; }
+
+#ceremony-diagram.is-recovering .combiner-halo {
+  animation: combiner-pulse 1.6s ease-in-out infinite;
+}
+
+.combiner-body {
+  fill: var(--ink);
+  stroke: var(--brass-dim);
+  stroke-width: 2;
+  transition: fill 0.4s ease, stroke 0.4s ease;
+}
+
+#ceremony-diagram.is-vault .combiner-body { stroke: var(--brass); }
+#ceremony-diagram.is-done .combiner-body { fill: var(--live); stroke: var(--live); }
+
+.combiner-icon { display: none; }
+.combiner-icon path,
+.combiner-icon rect {
+  fill: none;
+  stroke: var(--parchment);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.combiner-icon--lock .lock-body { fill: var(--parchment); stroke: none; }
+.combiner-icon--lock .lock-shackle { fill: none; }
+
+#ceremony-diagram.is-vault .combiner-icon--lock { display: block; }
+#ceremony-diagram.is-done .combiner-icon--lock { display: none; }
+#ceremony-diagram.is-done .combiner-icon--check { display: block; }
+
+.lock-shackle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform 0.5s ease;
+}
+
+#ceremony-diagram.is-recovering .lock-shackle {
+  transform: translateY(-3px) rotate(-20deg);
+}
+
+.combiner-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--ink-soft);
+  text-anchor: middle;
+}
+#ceremony-diagram.is-vault .combiner-label,
+#ceremony-diagram.is-done .combiner-label { fill: var(--parchment); }
+
+.diagram-edge {
+  stroke: var(--pending);
+  stroke-width: 1.5;
+  opacity: 0.5;
+  transition: stroke 0.4s ease, opacity 0.4s ease, stroke-dasharray 0.4s ease;
+}
+
+.diagram-edge--sealed { stroke: var(--brass-dim); opacity: 0.85; }
+.diagram-edge--active { stroke: var(--live); opacity: 1; stroke-width: 2; }
+.diagram-edge--paused { stroke: var(--paused); opacity: 0.5; stroke-dasharray: 4 4; }
+.diagram-edge--contributed { stroke: var(--live); opacity: 1; }
+
+.trustee-node__ring {
+  fill: #fffdf7;
+  stroke: var(--pending);
+  stroke-width: 2;
+  transition: stroke 0.4s ease, opacity 0.4s ease;
+}
+
+.trustee-node--prime .trustee-node__ring { stroke: var(--brass); stroke-width: 3; }
+.trustee-node--live .trustee-node__ring { stroke: var(--live); }
+.trustee-node--paused .trustee-node__ring { stroke: var(--paused); opacity: 0.55; }
+.trustee-node--not-needed .trustee-node__ring { stroke: var(--pending); opacity: 0.4; stroke-dasharray: 3 3; }
+
+.trustee-node--pulse .trustee-node__ring {
+  animation: trustee-pulse 1.6s ease-in-out infinite;
+}
+
+.trustee-node.is-entering {
+  animation: trustee-enter 0.5s ease forwards;
+}
+
+@keyframes trustee-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.trustee-node__label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.trustee-node--paused .trustee-node__label,
+.trustee-node--not-needed .trustee-node__label { fill: var(--ink-soft); }
+
+.trustee-node__tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--brass);
+  text-anchor: middle;
+}
+
+.trustee-node__badge {
+  opacity: 0;
+  transform: scale(0.6);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.trustee-node--contributed .trustee-node__badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.trustee-node__badge circle { fill: var(--live); }
+.trustee-node__badge path {
+  fill: none;
+  stroke: #fffdf7;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.diagram-token {
+  fill: var(--brass);
+  filter: drop-shadow(0 0 3px rgba(169, 124, 52, 0.6));
+}
+
+@keyframes combiner-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+
+@keyframes trustee-pulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(61, 122, 74, 0)); }
+  50% { filter: drop-shadow(0 0 4px rgba(61, 122, 74, 0.65)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combiner-halo, .trustee-node--pulse .trustee-node__ring, .diagram-token {
+    animation: none !important;
+  }
+}
+
 /* ------------------------------------------------------------------ phases */
 
 .phase {
