@@ -1,4 +1,99 @@
-# Session notes — 2026-07-18 (live ceremony dashboard built; nomenclature review; SSS write-up and slides reconciled from two parallel efforts)
+# Session notes — 2026-07-18 (demo run on a new machine; fixed a real Podman/SELinux bug; restored dashboard graphics)
+
+## What happened
+
+New machine picking up the shardic-envelope Keycloak demo cold (no
+`.env`, no container runtime state). User asked to run the demo and
+see the live dashboard.
+
+**Got the demo stack running via Podman + `docker-compose` shim**, but
+hit a chain of environment issues first, worth remembering if this
+machine resurfaces: `/home/splashd/bin` sits ahead of `/usr/bin` on
+`$PATH` and contains a full root-owned rescue/dracut toolset
+(`systemd-run`, `pkill`, `btrfs`, etc.) built against Fedora 43 libs
+on this Fedora 44 host — silently shadows and breaks standard commands
+(`pkill` failed outright; `systemd-run` loaded the wrong
+`libsystemd-shared`, which broke Podman's rootless networking via
+aardvark-dns). Left untouched (root-owned, unclear provenance) but
+worked around every command this session with `/usr/bin`-first `PATH`
+overrides. Also had to hand-start `podman system service` since the
+user session's socket wasn't running.
+
+**Found and fixed a real portability bug**, not just a local
+workaround: `demo/docker-compose.yml`'s two host bind mounts
+(`keycloak/realm-export.json`, `sample-secret`) had no SELinux relabel
+flag. Docker doesn't need one; Podman under SELinux-enforcing (this
+host) silently permission-denies the container, which manifested as
+Keycloak importing zero realms and all 5 trustees crash-looping on
+404s. Since the demo README documents Podman as a supported CLI, added
+`:Z` to both mounts rather than treating it as environment-only noise.
+Committed `9c1f26a`, pushed.
+
+**Dashboard was missing its graphics.** The live dashboard (built last
+session) shipped as plain text/data panels — the hub-and-spoke SVG
+diagram from the earlier design-mockup phase never made it into the
+real implementation (notes from two sessions back call this out
+directly: "a plain HTML/CSS/JS frontend"). User flagged this; asked
+via AskUserQuestion how much of the mockup's visual richness to
+restore — chose "full hub-and-spoke diagram." Rebuilt it from the
+mockup's *description* (the original was an unpublished, unsaved
+Claude Artifact from a prior session, not recoverable verbatim):
+combiner node at center with a lock icon that seals on vault creation
+and opens during recovery, 5 trustee nodes around it with live/paused
+rings and a brass "prime" tag, dashed red edges for paused trustees,
+a pulse animation on live trustees during an open recovery session,
+and small SVG-animated tokens that travel from each trustee to the
+combiner as their shard arrives. Kept the existing ink/parchment/brass
+palette and the four-phase tab structure; the diagram is additive and
+phase-persistent, not a replacement for the sidebar panels.
+
+**Verified against the real running stack, not just code review** —
+drove Chrome headless via the DevTools Protocol (no Playwright
+installed; used the `websockets` package directly against
+`--remote-debugging-port`) to screenshot all four phases live:
+formation, sealed/dormant, a real threshold-3 recovery with two
+trustees actually paused via `docker-compose pause`, and finalize/
+verify with a MATCH banner. That process caught two real bugs before
+they shipped: (1) a racy JS class-removal for the node fade-in left
+every trustee node stuck at low opacity — fixed with a self-contained
+CSS `@keyframes ... forwards` animation instead; (2) CSS
+`transform: scale(...)` on the "contributed" checkmark badge was
+silently discarding its SVG `translate()` positioning (browsers
+replace, not compose, presentation-attribute transforms with CSS
+ones) — the checkmark rendered on top of the username text instead of
+below it; fixed by splitting position and scale into separate nested
+`<g>` elements. Committed `d4cae35`, pushed.
+
+## State at end
+
+Working tree clean, `origin/main` at `d4cae35` before this sync commit.
+Demo stack is **still running** on this machine: Keycloak + combiner +
+all 5 trustees up, unpaused, a vault created and already
+recovery-verified (MATCH) from this session's testing. Dashboard live
+at `http://localhost:5000/dashboard`. Not torn down — a future session
+(or `docker-compose --profile candidates down -v`) should clean it up
+if nobody's actively using it.
+
+## Possibly worth following up
+
+- The combiner icon's "done" (green/checkmark) state only appears via
+  live SSE events, not on a fresh page reconnect — the snapshot
+  handler deliberately doesn't reconstruct `finalized` (pre-existing,
+  documented limitation from last session's Verify-button work, not
+  new). If this bugs a presenter mid-demo, the fix is re-clicking
+  Finalize; a real fix would mean teaching the snapshot path to infer
+  "finalized" from the presence of `last_verify`.
+- The `/home/splashd/bin` PATH-shadowing issue (rescue toolset ahead
+  of `/usr/bin`) is unresolved and unrelated to shardic — flagged to
+  the user twice now, not investigated further since it's outside
+  project scope.
+- Still true from prior entries: no automated test suite; Windows
+  `.exe` backfill status unknown; the "ceremony" naming recommendation
+  in the nomenclature skill is still unconfirmed.
+
+---
+
+
 
 ## What happened
 
