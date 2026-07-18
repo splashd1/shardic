@@ -17,12 +17,15 @@ token, realm-wide Admin API scope, etc.).
 """
 
 import base64
+import filecmp
 import json
 import os
+import queue
 import threading
+import time
 import uuid
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 import keycloak_client
 import krypt_container
@@ -32,6 +35,7 @@ import vault_core_prime
 DATA_DIR = os.environ.get("COMBINER_DATA_DIR", "/data")
 KEY_DIR = os.path.join(DATA_DIR, "keys")
 STATE_PATH = os.path.join(DATA_DIR, "state.json")
+DASHBOARD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard")
 
 KEYCLOAK_URL = os.environ["KEYCLOAK_URL"]
 KEYCLOAK_REALM = os.environ["KEYCLOAK_REALM"]
@@ -43,9 +47,25 @@ VAULT_OUTDIR = os.environ.get("VAULT_OUTDIR", "/data/vault")
 RECOVERED_OUTDIR = os.environ.get("RECOVERED_OUTDIR", "/data/recovered")
 TRUSTEES_REQUIRED = 5
 THRESHOLD = 3
+HEARTBEAT_TIMEOUT_S = float(os.environ.get("HEARTBEAT_TIMEOUT_S", "10"))
+HEARTBEAT_SCAN_INTERVAL_S = 2
 
 app = Flask(__name__)
 _lock = threading.Lock()
+
+# SSE fan-out. Deliberately a separate lock from `_lock`: broadcasting to
+# (potentially stalled) dashboard listeners must never be able to block a
+# real ceremony operation.
+_sse_listeners: list[queue.Queue] = []
+_sse_lock = threading.Lock()
+
+
+def _broadcast(event_type: str, data: dict) -> None:
+    message = json.dumps({"type": event_type, "data": data})
+    with _sse_lock:
+        listeners = list(_sse_listeners)
+    for q in listeners:
+        q.put(message)
 
 
 class CombinerError(Exception):
@@ -62,8 +82,12 @@ def _new_state():
         "combiner_public_key": public_key,
         "trustee_pubkeys": {},     # sub -> {"username", "public_key" (bytes), "fingerprint"}
         "vault": None,             # {"krypt_path", "metadata", "ciphertext" (bytes)}
+        "vault_assignment": None,  # {"prime_sub", "pool_subs": [sub, ...]} -- fixed at creation time
         "codeword_envelopes": {},  # sub -> envelope dict
         "recovery_session": None,  # {"session_id", "replied": set, "mask", "pool_shares"} -- in-memory only
+        "trustee_last_seen": {},   # sub -> time.time() of last authenticated request -- in-memory only
+        "trustee_status": {},      # sub -> "live" | "paused" -- in-memory only, derived by _heartbeat_loop
+        "last_verify": None,       # {"match": bool} -- in-memory only, set by /admin/recovery/verify
     }
 
 
@@ -84,6 +108,7 @@ def _load_state():
                 "metadata": saved["vault"]["metadata"],
                 "ciphertext": base64.b64decode(saved["vault"]["ciphertext"]),
             }
+            state["vault_assignment"] = saved.get("vault_assignment")
         state["codeword_envelopes"] = dict(saved.get("codeword_envelopes", {}))
     return state
 
@@ -104,6 +129,7 @@ def _save_state_locked():
             for sub, rec in STATE["trustee_pubkeys"].items()
         },
         "vault": None,
+        "vault_assignment": None,
         "codeword_envelopes": STATE["codeword_envelopes"],
     }
     if STATE["vault"] is not None:
@@ -112,6 +138,7 @@ def _save_state_locked():
             "metadata": STATE["vault"]["metadata"],
             "ciphertext": base64.b64encode(STATE["vault"]["ciphertext"]).decode("ascii"),
         }
+        payload["vault_assignment"] = STATE["vault_assignment"]
     tmp_path = STATE_PATH + ".tmp"
     with open(tmp_path, "w") as f:
         json.dump(payload, f)
@@ -133,7 +160,10 @@ def do_register_trustee(bearer_token: str, public_key_b64: str, algorithm: str) 
     fp = shardic_envelope_crypto.fingerprint(public_key)
     with _lock:
         STATE["trustee_pubkeys"][sub] = {"username": username, "public_key": public_key, "fingerprint": fp}
+        STATE["trustee_last_seen"][sub] = time.time()
+        STATE["trustee_status"][sub] = "live"
         _save_state_locked()
+    _broadcast("trustee_registered", {"username": username, "fingerprint": fp})
     return {"trustee_id": sub, "username": username, "fingerprint": fp}
 
 
@@ -197,13 +227,29 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
 
         STATE["codeword_envelopes"] = envelopes
         STATE["vault"] = {"krypt_path": result["krypt_path"], "metadata": metadata, "ciphertext": ciphertext}
+        # Recorded once, here, rather than re-derived later from
+        # trustee_pubkeys -- if a `candidates`-profile trustee (frank/grace)
+        # registers *after* this vault already exists, re-sorting all
+        # currently-known usernames at snapshot/query time would silently
+        # relabel who's "prime", even though the actual wrapped envelopes
+        # (and do_create_vault's own alphabetical-at-the-time choice above)
+        # never change.
+        STATE["vault_assignment"] = {
+            "prime_sub": prime_sub,
+            "pool_subs": [sub for sub, _rec in pool_assignments],
+        }
         _save_state_locked()
 
-        return {
+        response = {
             "krypt_path": result["krypt_path"],
             "prime_trustee": STATE["trustee_pubkeys"][prime_sub]["username"],
             "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub, _ in pool_assignments],
+            "threshold": THRESHOLD,
+            "pool_threshold": metadata["pool_threshold"],
         }
+
+    _broadcast("vault_created", response)
+    return response
 
 
 def _secure_delete(path: str) -> None:
@@ -226,11 +272,13 @@ def start_recovery_session() -> str:
             "mask": None,
             "pool_shares": [],
         }
-        return session_id
+    _broadcast("recovery_started", {"session_id": session_id})
+    return session_id
 
 
 def get_pending_envelope(sub: str) -> dict | None:
     with _lock:
+        STATE["trustee_last_seen"][sub] = time.time()
         session = STATE["recovery_session"]
         if session is None or sub in session["replied"]:
             return None
@@ -246,6 +294,7 @@ def get_pending_envelope(sub: str) -> dict | None:
 
 def submit_shard_reply(sub: str, session_id: str, shard_envelope: dict) -> None:
     with _lock:
+        STATE["trustee_last_seen"][sub] = time.time()
         session = STATE["recovery_session"]
         if session is None or session["session_id"] != session_id:
             raise CombinerError("no active recovery session with that session_id", status_code=409)
@@ -261,7 +310,16 @@ def submit_shard_reply(sub: str, session_id: str, shard_envelope: dict) -> None:
         else:
             session["pool_shares"].append(value)
         session["replied"].add(sub)
-        print(f"shard received from trustee (session {session_id}); {len(session['replied'])} received so far")
+        pool_threshold = STATE["vault"]["metadata"]["pool_threshold"]
+        username = STATE["trustee_pubkeys"][sub]["username"]
+        replied_count = len(session["replied"])
+        print(f"shard received from trustee (session {session_id}); {replied_count} received so far")
+    _broadcast("shard_received", {
+        "username": username,
+        "kind": kind,
+        "replied_count": replied_count,
+        "pool_threshold": pool_threshold,
+    })
 
 
 def finalize_recovery(outdir: str) -> dict:
@@ -290,7 +348,102 @@ def finalize_recovery(outdir: str) -> dict:
             log=print,
         )
         trustees_used = sorted(STATE["trustee_pubkeys"][sub]["username"] for sub in session["replied"])
-        return {"outdir": result["outdir"], "trustees_used": trustees_used}
+        response = {"outdir": result["outdir"], "trustees_used": trustees_used}
+
+    _broadcast("recovery_finalized", response)
+    return response
+
+
+def verify_recovery() -> dict:
+    """Pure-Python recursive tree comparison -- python:3.12-slim doesn't
+    reliably ship `diffutils`, and this mirrors exactly the paths the
+    README's manual `diff -r` check already uses."""
+    recovered_path = os.path.join(RECOVERED_OUTDIR, os.path.basename(SAMPLE_SECRET_PATH.rstrip("/")))
+    match = _trees_match(SAMPLE_SECRET_PATH, recovered_path)
+    with _lock:
+        STATE["last_verify"] = {"match": match}
+    _broadcast("recovery_verified", {"match": match})
+    return {"match": match}
+
+
+def _trees_match(left: str, right: str) -> bool:
+    if not os.path.exists(right):
+        return False
+    if os.path.isdir(left) != os.path.isdir(right):
+        return False
+    if os.path.isdir(left):
+        comparison = filecmp.dircmp(left, right)
+        if comparison.left_only or comparison.right_only or comparison.funny_files:
+            return False
+        _match, mismatch, errors = filecmp.cmpfiles(
+            left, right, comparison.common_files, shallow=False
+        )
+        if mismatch or errors:
+            return False
+        return all(
+            _trees_match(os.path.join(left, sub), os.path.join(right, sub))
+            for sub in comparison.common_dirs
+        )
+    return filecmp.cmp(left, right, shallow=False)
+
+
+def _heartbeat_loop() -> None:
+    """Background daemon thread: trustees hit /trustees/pending-envelope
+    every poll_interval_s unconditionally (whether or not a recovery
+    session is open), so a gap longer than HEARTBEAT_TIMEOUT_S means the
+    container is paused (or gone) -- this is the only signal used, no
+    Docker API access from the browser or this process."""
+    while True:
+        time.sleep(HEARTBEAT_SCAN_INTERVAL_S)
+        now = time.time()
+        transitions = []
+        with _lock:
+            for sub, last_seen in STATE["trustee_last_seen"].items():
+                status = "paused" if (now - last_seen) > HEARTBEAT_TIMEOUT_S else "live"
+                if STATE["trustee_status"].get(sub) != status:
+                    STATE["trustee_status"][sub] = status
+                    transitions.append((STATE["trustee_pubkeys"][sub]["username"], status))
+        for username, status in transitions:
+            _broadcast("trustee_status", {"username": username, "status": status})
+
+
+def _build_snapshot() -> dict:
+    with _lock:
+        trustees = [
+            {
+                "username": rec["username"],
+                "fingerprint": rec["fingerprint"],
+                "status": STATE["trustee_status"].get(sub, "live"),
+            }
+            for sub, rec in sorted(STATE["trustee_pubkeys"].items(), key=lambda kv: kv[1]["username"])
+        ]
+        vault = None
+        if STATE["vault"] is not None:
+            assignment = STATE["vault_assignment"]
+            vault = {
+                "prime_trustee": STATE["trustee_pubkeys"][assignment["prime_sub"]]["username"],
+                "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub in assignment["pool_subs"]],
+                "threshold": THRESHOLD,
+                "pool_threshold": STATE["vault"]["metadata"]["pool_threshold"],
+            }
+        session = STATE["recovery_session"]
+        recovery = None
+        if session is not None:
+            pool_threshold = STATE["vault"]["metadata"]["pool_threshold"] if STATE["vault"] else None
+            recovery = {
+                "session_id": session["session_id"],
+                "replied_usernames": sorted(
+                    STATE["trustee_pubkeys"][sub]["username"] for sub in session["replied"]
+                ),
+                "pool_threshold": pool_threshold,
+            }
+        return {
+            "trustees": trustees,
+            "trustees_required": TRUSTEES_REQUIRED,
+            "vault": vault,
+            "recovery": recovery,
+            "last_verify": STATE["last_verify"],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +547,48 @@ def admin_recovery_finalize():
     return jsonify(result)
 
 
+@app.route("/admin/recovery/verify", methods=["POST"])
+def admin_recovery_verify():
+    _require_admin()
+    result = verify_recovery()
+    return jsonify(result)
+
+
+@app.route("/events", methods=["GET"])
+def events():
+    """SSE stream for the live ceremony dashboard. Sends one `snapshot`
+    event immediately (so a dashboard opened mid-ceremony repaints
+    correctly), then relays every subsequent _broadcast() call."""
+    q: queue.Queue = queue.Queue()
+    with _sse_lock:
+        _sse_listeners.append(q)
+
+    def stream():
+        try:
+            snapshot_message = json.dumps({"type": "snapshot", "data": _build_snapshot()})
+            yield f"data: {snapshot_message}\n\n"
+            while True:
+                message = q.get()
+                yield f"data: {message}\n\n"
+        finally:
+            with _sse_lock:
+                if q in _sse_listeners:
+                    _sse_listeners.remove(q)
+
+    return Response(stream(), mimetype="text/event-stream")
+
+
+@app.route("/dashboard", methods=["GET"])
+def dashboard_index():
+    return send_from_directory(DASHBOARD_DIR, "index.html")
+
+
+@app.route("/dashboard/<path:filename>", methods=["GET"])
+def dashboard_static(filename):
+    return send_from_directory(DASHBOARD_DIR, filename)
+
+
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
+    threading.Thread(target=_heartbeat_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, threaded=True)

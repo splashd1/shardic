@@ -59,6 +59,18 @@ reuse in a real deployment:
   Keycloak. Would close the last gap in that pattern's trust story for a
   real deployment; not built here.
 
+## Live dashboard
+
+Once `keycloak`, `combiner`, and the selected trustees are up, open
+`http://localhost:5000/dashboard` in a browser for a presenter-facing view
+of the ceremony instead of reading curl output: trustee registration and
+live/paused status arrive over Server-Sent Events as they happen, and the
+same `/admin/*` actions from the walkthrough below are available as buttons
+(paste `$COMBINER_ADMIN_TOKEN` from `.env` into the token field first). The
+dashboard is a pure bolt-on — a dashboard tab open or closed has no effect
+on the curl-driven walkthrough, and vice versa; both drive the same
+combiner state.
+
 ## Prerequisites
 
 - Docker or Podman with a `docker-compose`-compatible CLI.
@@ -180,4 +192,7 @@ docker-compose --profile candidates down -v
 | GET | `/admin/keycloak/group-members` | `X-Admin-Token` | List the 7 candidates. |
 | POST | `/admin/recovery/start` | `X-Admin-Token` | Arm a recovery session. |
 | POST | `/admin/recovery/finalize` | `X-Admin-Token` | Combine collected shards, decrypt. |
+| POST | `/admin/recovery/verify` | `X-Admin-Token` | Byte-for-byte compare recovered output against the original. |
+| GET | `/events` | none | Server-Sent Events stream backing the live dashboard. |
+| GET | `/dashboard` | none | The live dashboard itself. |
 | GET | `/healthz` | none | Compose healthcheck target. |

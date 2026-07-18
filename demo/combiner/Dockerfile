@@ -14,6 +14,7 @@ COPY vault_core_prime.py vault_core.py gf256_sss_prime.py gf256_sss.py \
      kdf.py krypt_container.py wordgen.py eff_wordlist_words.py \
      shardic_envelope_crypto.py ./
 COPY demo/combiner/app.py demo/combiner/keycloak_client.py ./
+COPY demo/combiner/dashboard ./dashboard
 
 EXPOSE 5000
 CMD ["python3", "app.py"]
