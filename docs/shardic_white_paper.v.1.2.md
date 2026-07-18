@@ -329,7 +329,10 @@ precise moment the answer springs into existence.</p></td>
 shardic's actual implementation replaces "a line" or "a curve on a graph"
 with a polynomial of degree D − 1 evaluated over a finite field, applied
 independently to each byte of the DEK — the same idea above, made
-precise and computable. §3.2 picks up exactly there.
+precise and computable. §3.2 picks up exactly there. For a complete,
+standalone treatment — including the exact polynomial construction and
+why the arithmetic runs over GF(256) instead of real numbers — see
+[`docs/sss_explained_for_shardic.md`](sss_explained_for_shardic.md).
 
 # 2. Concept of Operations
 

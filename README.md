@@ -95,6 +95,7 @@ government and business scenarios.
   codeword into `vault_recover.py`/the GUI, unchanged from today).
 - [`docs/shardic-envelope-explainer.html`](docs/shardic-envelope-explainer.html) — a static, illustrated walkthrough of the shardic-envelope ceremony's four phases (Formation, Protected & Dormant, Threshold-Proof, Finalize & Verify), for anyone who can't run the live `demo/` stack. Open it directly in a browser.
 - [`docs/nomenclature.md`](docs/nomenclature.md) — the canonical glossary and lifecycle-state vocabulary for shardic's domain objects (vault, share, shard, trustee, combiner, etc.), grounded in actual code usage. Also available as a Claude Code skill (`.claude/skills/shardic-nomenclature/`) that loads automatically for naming-sensitive work.
+- [`docs/sss_explained_for_shardic.md`](docs/sss_explained_for_shardic.md) — a standalone, complete explainer of Shamir's Secret Sharing: the geometric intuition, the precise polynomial construction, why the arithmetic runs over GF(256), and how shardic builds on it. The white paper's §1.4 gives a shorter in-context version of the same intuition before §3.2's mechanics; this is the full reference.
 - [`docs/shardic_white_paper.v.1.2.md`](docs/shardic_white_paper.v.1.2.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
 ## Requirements (running from source)
