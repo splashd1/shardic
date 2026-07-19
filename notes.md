@@ -1,3 +1,80 @@
+# Session notes — 2026-07-19 (web-chat design discussion: portable trustee client)
+
+## What happened
+
+Design-only session (web chat, not Claude Code) reviewing the
+`demo/` ceremony architecture and discussing how to make the
+**trustee** side portable, while keeping Keycloak + combiner + vault
+repo as centralized, containerized services (no change proposed to
+those). Nothing implemented yet — this is a design brief for a
+follow-up implementation session.
+
+## Current state reviewed (unchanged)
+
+- `demo/` is a working containerized ceremony: Keycloak (7 candidate
+  trustees) + Flask combiner + one container per trustee, X25519 ECDH
+  + HKDF-SHA256 + AES-256-GCM envelopes (`shardic_envelope_crypto.py`,
+  algorithm tag `x25519-hkdf-sha256-aes256gcm`), shard-only replies
+  via `vault_core_prime.try_match_word_prime`. Auth is Direct Access
+  Grant (ROPC) with demo passwords baked into `.env`/
+  `keycloak/realm-export.json` — a deliberate demo-only shortcut per
+  `demo/README.md`.
+- Bottleneck for portability is Keycloak (JVM, ~800MB image, slow
+  cold start) + Docker orchestration (8 containers) — not the crypto
+  core, which is already portable pure-Python.
+
+## Decision direction (pending confirmation, not yet built)
+
+Split portability scope:
+- **Centralized, containerized (no change):** Keycloak/IAM, combiner,
+  vault repo.
+- **Portable trustee client (new):** covers phase 1 (keypair gen +
+  registration) and phase 2 (shard derivation + delivery to
+  combiner), replacing the per-trustee Docker container.
+
+Leaning **web-based (PWA/SPA)** client over a PyInstaller native app,
+contingent on confirming secure keypair custody in-browser — verified
+during this session:
+- WebCrypto `SubtleCrypto` now natively supports **X25519**
+  (`generateKey`/`deriveBits`) across major browsers as of 2026 (W3C
+  Secure Curves API) — matches the existing envelope algorithm
+  exactly, so no crypto-primitive change, just a JS port of the wrap/
+  unwrap wire format (`shardic_envelope_crypto.py` is ~190 lines).
+- Non-extractable `CryptoKey` + IndexedDB persistence gives
+  device-local key custody comparable to the container's isolated
+  volume today — private key material never becomes readable JS
+  memory.
+- **Caveat flagged, not yet resolved with the user:** browser-held
+  keys are zero-install but still single-device-bound, same as a
+  native app + OS keychain would be — "portable app" (no install)
+  and "roams across my devices" (identity backup/escrow) are
+  different asks. User said they'd get back to me on additional
+  factors before this is finalized.
+
+## Concrete changes identified for a web trustee client (not yet built)
+
+| Piece | Today (container) | Web client plan |
+|---|---|---|
+| Auth | Direct Access Grant, password in env | Authorization Code + PKCE (Keycloak already supports; no client secret) |
+| Keypair | `X25519PrivateKey.generate()`, Docker volume | `subtle.generateKey()`, non-extractable, IndexedDB |
+| Registration / poll / shard-reply | `requests` against combiner REST API | `fetch()` against the same 3 endpoints — **combiner API itself does not change** |
+| Shard derivation (GF(256) math) | `vault_core_prime.try_match_word_prime` (Python, reused as-is) | **real porting cost** — needs a JS or WASM port of `gf256_sss_prime.py`'s field math; good target for unit tests mirrored from the existing Python self-tests |
+| Combiner reachability | same Docker network, server-to-server | needs **CORS enabled** on the Flask combiner (currently none) |
+
+## Possibly worth following up
+
+- User has additional portability factors not yet stated ("hit enter
+  too soon") — confirm before implementing anything below.
+- Decide device-roaming/backup question explicitly — don't let it
+  default to "unsolved" by accident.
+- If web path is confirmed: scope the GF(256) JS/WASM port as its own
+  work item before touching auth or UI, since it's the one piece with
+  real correctness risk (Shamir math, not just wrapping/transport).
+- CORS policy on the combiner needs a real decision (allowed origins,
+  credentials mode) once a hosting story for the static client exists.
+
+---
+
 # Session notes — 2026-07-18 (demo run on a new machine; fixed a real Podman/SELinux bug; restored dashboard graphics)
 
 ## What happened
