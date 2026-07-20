@@ -1,3 +1,141 @@
+# Session notes — 2026-07-20 (Claude Code: implemented ceremony formation — invitations, decline/TTL, automatic backfill)
+
+## What happened
+
+Direct continuation of the same day's operator-role entry below — user
+asked to implement `docs/ceremony-formation.md` next. The largest,
+most invasive piece of code from this whole design set so far (328
+lines changed in `app.py` alone): a real ceremony state machine that
+replaces the old "vault creation just uses all N registered trustees"
+gate with operator-initiated selection, per-trustee invitations,
+decline/timeout handling, and automatic race-safe backfill.
+
+**Built**: `initiate_ceremony()` (validates T/D bounds, distinctness,
+registered-candidate membership, and separation-of-duties across the
+*entire* backup list — not just primaries), `get_pending_invitation()`/
+`respond_to_invitation()` (race-safe: a slot only accepts a response
+from its *current* occupant, so a late accept from an already-
+backfilled primary gets a clean 409, not a double-fill), `_lapse_slot_
+locked()` (decline and TTL expiry both funnel through the same path,
+matching the design's "non-acceptance is non-acceptance" rule), and a
+new `_ceremony_scan_loop()` background thread mirroring
+`_heartbeat_loop`'s existing shape. `do_create_vault` rewritten
+end-to-end: T/D and prime/pool assignment now come from the ceremony's
+actual accepted slots (including any backfills) instead of a hardcoded
+trustee count and alphabetical-sort assignment — this was the real
+behavior change, not just additive scaffolding.
+`TRUSTEES_REQUIRED`/`THRESHOLD` module constants removed entirely.
+Three new routes (`/admin/ceremony/initiate`,
+`/trustees/pending-invitation`, `/trustees/invitation-response`).
+`demo/trustee/app.py` now polls for and auto-accepts invitations each
+cycle — this demo trustee is headless with no human to ask "accept
+this?", so pausing a container *before* ceremony initiation is how
+decline gets simulated, reusing the exact mechanism the recovery
+threshold-proof already established. Dashboard's Create Vault button
+now correctly gates on ceremony status instead of raw registration
+count; new SSE event types get readable log lines (no new visual
+diagram work — an explicit, documented scope cut).
+
+**Five originally-open design questions got concrete v1.0 decisions**,
+documented in `docs/ceremony-formation.md` rather than left open
+indefinitely: backup-list exhaustion → ceremony fails outright
+(`status: "failed"`, no partial-alert state); no separate
+ceremony-level timeout distinct from per-invitation TTL; TTL defaults
+to 20s via `CEREMONY_INVITE_TTL_S`, configurable; backup-list ordering
+fixed at initiation, no mid-formation reordering; audit/logging reuses
+the existing `print()` + SSE `_broadcast()` pattern, no new mechanism.
+
+**Verified end-to-end against the real containerized stack**, and went
+out of the way to actually exercise two negative paths rather than
+assume them from code review:
+- Full happy path with 6 trustees registered (5 primaries + 1 backup,
+  `frank`): paused `erin` *before* initiating the ceremony so she'd
+  never see her invitation, initiated (prime=alice, pool=[bob,carol,
+  dave,erin], backups=[frank]), watched the combiner's own log show
+  the exact designed sequence — 4 auto-accepts, erin's pool invitation
+  expiring via TTL, frank auto-backfilled into her slot, frank
+  accepting, ceremony formed — then created the vault (prime=alice,
+  pool=[bob,carol,dave,**frank**], frank correctly in erin's original
+  slot position), ran the threshold-3 recovery proof by pausing the
+  *actual* participants dave+frank this time (not erin, since she'd
+  been backfilled out), and got the same `trustees_used: ["alice",
+  "bob", "carol"]` / byte-for-byte match payoff as always.
+- **Separation-of-duties, genuinely tested, not just read**: found
+  live that `/trustees/register` isn't scoped to the `shardic-trustees`
+  group — any authenticated realm user can self-register as a
+  candidate. Used that (the `operator` account authenticating against
+  `shardic-trustee-client` and registering) to construct a real
+  scenario where naming the operator in a ceremony's backup list was
+  actually possible to attempt, then confirmed it returns a genuine
+  403. Documented the registration-scoping gap itself as a new,
+  real (pre-existing, not introduced this session) simplification in
+  `demo/README.md`, rather than quietly using it and moving on.
+- Input validation (unregistered username, out-of-range threshold)
+  both fail cleanly with 400s.
+
+**Also fixed a documentation-staleness bug found while updating docs**:
+the top-level `README.md`'s blurbs for the *previous* two implemented
+docs (`vault-storage-backend.md`, the operator-role half of
+`keycloak-credential-lookup.md`) had never been updated off "design
+proposal, not yet implemented" in their respective sessions — fixed
+all three (including ceremony-formation.md) together this pass.
+
+**"Ceremony" formalized as a settled nomenclature term**, no longer
+flagged "recommended, unsettled" — it's now a real route prefix
+(`/admin/ceremony/initiate`), a `STATE["ceremony"]` key, and several
+SSE event types. Updated both nomenclature docs and the skill
+accordingly, including new lifecycle-state entries for `Ceremony`
+(`forming`→`formed`/`failed`) and `Invitation slot`
+(`invited`→`accepted`/`open`).
+
+Committed as `d7fd04f` (9 files, 664 insertions), pushed to
+`origin/main` at the user's explicit request after a review pause.
+
+**Found but deliberately left alone**: an untracked
+`demo/shardic demo mail.md` appeared during this session — not
+something this session wrote. Read it before deciding what to do (per
+the "investigate unfamiliar files" instinct): it's the user's own
+scratch note about a Gmail `+suffix`-addressing trick for simulating
+distinct demo notification recipients from one inbox, relevant to a
+future `notification-channels.md` implementation pass. Left untouched
+and unstaged, flagged to the user rather than silently incorporated or
+deleted.
+
+## State at end
+
+Working tree clean except that one untracked user note (not mine to
+touch). `origin/main` at `d7fd04f`. Demo stack fully torn down —
+nothing left running on this machine (`zenduo`).
+
+## Possibly worth following up
+
+- **Three pieces of the ceremony/portability/storage design set are
+  now implemented** (`VaultStore`, `shardic-operator`, ceremony
+  formation) — `notification-channels.md` and `portable-trustee-
+  client.md` are the two still fully proposal-only, plus the trustee
+  key-registration flow itself
+  (`keycloak-credential-lookup.md`'s non-operator half). Ceremony
+  formation currently uses plain polling for invitations, explicitly
+  standing in for `notification-channels.md`'s still-unbuilt pluggable
+  interface — that'd be the natural next piece if the pattern
+  continues, since it's the last real interface still fully on paper
+  in this thread (`portable-trustee-client.md` is a bigger, different
+  kind of undertaking — a whole new browser client, not a combiner-side
+  interface).
+- The `demo/shardic demo mail.md` note (Gmail `+suffix` addressing)
+  is real design input for whoever picks up notification-channels.md
+  next — worth reading when that thread resumes, not committed
+  anywhere yet since it's the user's own untracked scratch file.
+- `/trustees/register`'s missing group-scoping (found this session) is
+  now documented as a known gap in `demo/README.md` but not fixed —
+  fine for a demo, would need addressing in any real deployment
+  following `keycloak-credential-lookup.md`'s design.
+- Same longstanding carryovers: no automated test suite beyond the
+  module-level self-tests that exist; Windows `.exe` build parity only
+  ever CI-verified.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: implemented the shardic-operator role, replacing the shared admin token)
 
 ## What happened
