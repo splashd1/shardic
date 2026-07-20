@@ -1,21 +1,24 @@
-# Combiner vault storage: a pluggable VaultStore interface (proposed, unimplemented)
+# Combiner vault storage: a pluggable VaultStore interface (v1.0 filesystem backend implemented)
 
-**Status: design proposal.** Nothing described here exists in the
-codebase yet. This document answers a question the ceremony-formation
-design thread surfaced but didn't cover: once a `.krypt` container is
-created, where does it actually live long-term, and does shardic need
-to support anything beyond a plain file on disk?
+**Status: the filesystem reference implementation described below is
+implemented and verified** — `demo/combiner/vault_store.py`
+(`VaultStore` Protocol + `FilesystemVaultStore`), wired into
+`demo/combiner/app.py`'s `do_create_vault` and a new
+`GET /admin/vault/download` route, verified end-to-end against the
+real running demo stack (registration → vault create → combiner
+restart mid-recovery → threshold-3 recovery → byte-for-byte verify, all
+against the `VaultStore`-backed file). SQL/NoSQL backends remain
+unimplemented — still a future, config-selected alternate
+implementation, not built here.
 
-## Where things stand today
+## Where things stood before this
 
-The combiner already holds `.krypt` ciphertext server-side — this
-isn't new scope, just an undesigned corner of what already exists.
-`demo/combiner/app.py` writes it straight to a filesystem path
-(`VAULT_OUTDIR`, defaulting to `/data/vault`, a Docker volume —
-`demo/combiner/app.py:46`), read back via `krypt_container.read_krypt`
-in `do_create_vault` (`demo/combiner/app.py:170,226`). There's no
-storage abstraction at all today: filesystem is not a *choice*, it's
-the only thing that exists.
+The combiner already held `.krypt` ciphertext server-side — that
+wasn't new scope, just an undesigned corner of what already existed.
+`demo/combiner/app.py` used to write it straight to a filesystem path
+(`VAULT_OUTDIR`, defaulting to `/data/vault`, a Docker volume) with no
+storage abstraction at all: filesystem wasn't a *choice*, it was the
+only thing that existed. The design below is what closed that gap.
 
 ## Design principle: pluggable interface, filesystem default, no bundled infra
 
@@ -58,26 +61,33 @@ integration decision for whoever deploys the plugin.
   the deploying org owns its own infrastructure choices, shardic
   doesn't make that choice for them.
 
-## Interface sketch
+## Interface (implemented)
 
 ```python
 class VaultStore(Protocol):
     def store(self, vault_id: str, krypt_bytes: bytes) -> None:
         """Persist a .krypt container's raw bytes, keyed by vault_id.
-        Raises if a live record already exists for vault_id -- storage
-        must not silently overwrite an existing vault, mirroring
-        EnvelopeDropPoint.deposit()'s same non-overwrite guarantee."""
+        Raises VaultAlreadyExistsError if a live record already exists
+        for vault_id -- storage must not silently overwrite an
+        existing vault, mirroring EnvelopeDropPoint.deposit()'s same
+        non-overwrite guarantee."""
 
     def retrieve(self, vault_id: str) -> bytes:
-        """Return the stored .krypt bytes for vault_id, or raise if
-        none exist."""
+        """Return the stored .krypt bytes for vault_id. Raises
+        VaultNotFoundError if none exist."""
 ```
 
-`delete`/`list` are deliberately left out of this first sketch —
-nothing in the current design calls for either yet (vaults aren't
-deleted, and there's currently no multi-vault listing UI), so they're
-not specified until an actual caller needs them, per this project's
-general bias against speculative interface surface.
+This is the real interface in `demo/combiner/vault_store.py`, along
+with `FilesystemVaultStore` (write-to-temp-then-`os.replace` for
+crash-safety) and a `__main__` self-test mirroring the pattern already
+used by `gf256_sss.py`/`shardic_envelope_crypto.py`
+(`python3 demo/combiner/vault_store.py`).
+
+`delete`/`list` are still deliberately left out — nothing in the
+current design calls for either yet (vaults aren't deleted, and
+there's currently no multi-vault listing UI), so they're not specified
+until an actual caller needs them, per this project's general bias
+against speculative interface surface.
 
 ## Durability follows from the backend choice, not a separate policy
 
@@ -103,15 +113,17 @@ doesn't presume they share an implementation, even though the
 structural similarity (pluggable storage, filesystem-simple default)
 is worth noticing if that question gets revisited.
 
-## Open questions / TBD before real implementation
+## Open questions / TBD
 
-- Exact method signatures beyond the sketch above (error types for
-  "not found" vs. "already exists," whether `store`/`retrieve` should
-  be async given a real DB backend).
+- ~~Exact method signatures~~ — resolved by the implementation above
+  (synchronous, `VaultAlreadyExistsError`/`VaultNotFoundError` as
+  distinct exception types). Whether `store`/`retrieve` should become
+  async for a real DB backend is still open, deferred until a non-
+  filesystem implementation is actually built.
 - Migration path for moving an existing vault's data from one backend
   implementation to another.
 - Whether this interface should also cover other combiner state
   (`STATE["trustee_pubkeys"]`, `state.json`) or stay scoped to just
   `.krypt` bytes — today those live in the same `DATA_DIR` but via
-  different mechanisms (`demo/combiner/app.py:35-37`); unifying them
-  under one interface is a bigger scope decision than this doc makes.
+  different mechanisms; unifying them under one interface is a bigger
+  scope decision than this doc makes.

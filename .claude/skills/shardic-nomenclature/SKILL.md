@@ -33,6 +33,7 @@ explicitly.
 | **Pool threshold** | `D − 1`, shardic-prime only: required count among pool trustees, since the prime is separately mandatory. |
 | **Combiner** | The service holding ciphertext + wrapped envelopes; orchestrates registration/recovery; never sees a codeword. |
 | **Recovery session** | One combiner-tracked recovery attempt, identified by `session_id`. Ephemeral — doesn't survive a combiner restart. |
+| **`VaultStore`** | Pluggable backing store for the combiner's `.krypt` bytes, keyed by `vault_id`. `FilesystemVaultStore` (`demo/combiner/vault_store.py`) is the only backend shipped. |
 | **Ceremony** | *(recommended, not yet settled — see below)* The umbrella term for the whole registration→verified-recovery arc. |
 
 **The one pair to never confuse:** *share = at rest, in the vault,
@@ -136,6 +137,13 @@ Deliberately ephemeral — doesn't survive a combiner restart, since
 re-arming a session (`/admin/recovery/start`) is cheap and
 non-destructive, unlike vault creation.
 
+**`VaultStore`** (`Protocol`, implemented in
+`demo/combiner/vault_store.py`) — pluggable backing store for the
+combiner's `.krypt` bytes, keyed by `vault_id`. `FilesystemVaultStore`
+is the only backend shipped (v1.0, matches what the combiner already
+did before this existed); SQL/NoSQL stay a future, config-selected
+alternate implementation, per `docs/vault-storage-backend.md`.
+
 **Ceremony** *(recommended, not yet settled)* — proposed as the
 standard umbrella term for the whole arc from trustee registration
 through a verified recovery. Not present in the original core codebase
@@ -185,10 +193,6 @@ doesn't assume they're live:
   — pluggable, admin-configurable delivery of a non-secret prompt;
   shared by ceremony invites, envelope-ready pings, and drop-expired
   alerts.
-- **`VaultStore`** (`Protocol`, `docs/vault-storage-backend.md`) —
-  pluggable backing store for the combiner's `.krypt` bytes;
-  filesystem-backed by default, SQL/NoSQL as a config-selected
-  alternate implementation.
 
 ## Lifecycle-state adjectives
 

@@ -31,6 +31,7 @@ import keycloak_client
 import krypt_container
 import shardic_envelope_crypto
 import vault_core_prime
+import vault_store
 
 DATA_DIR = os.environ.get("COMBINER_DATA_DIR", "/data")
 KEY_DIR = os.path.join(DATA_DIR, "keys")
@@ -52,6 +53,12 @@ HEARTBEAT_SCAN_INTERVAL_S = 2
 
 app = Flask(__name__)
 _lock = threading.Lock()
+
+# The v1.0 reference VaultStore implementation -- see
+# docs/vault-storage-backend.md. Swapping this for a SQL/NoSQL-backed
+# implementation later is a config change here, not a rewrite of
+# do_create_vault or the admin/download route below.
+VAULT_STORE: vault_store.VaultStore = vault_store.FilesystemVaultStore(VAULT_OUTDIR)
 
 # SSE fan-out. Deliberately a separate lock from `_lock`: broadcasting to
 # (potentially stalled) dashboard listeners must never be able to block a
@@ -81,7 +88,7 @@ def _new_state():
         "combiner_private_key": private_key,
         "combiner_public_key": public_key,
         "trustee_pubkeys": {},     # sub -> {"username", "public_key" (bytes), "fingerprint"}
-        "vault": None,             # {"krypt_path", "metadata", "ciphertext" (bytes)}
+        "vault": None,             # {"vault_id", "metadata", "ciphertext" (bytes)}
         "vault_assignment": None,  # {"prime_sub", "pool_subs": [sub, ...]} -- fixed at creation time
         "codeword_envelopes": {},  # sub -> envelope dict
         "recovery_session": None,  # {"session_id", "replied": set, "mask", "pool_shares"} -- in-memory only
@@ -104,7 +111,7 @@ def _load_state():
             }
         if saved.get("vault"):
             state["vault"] = {
-                "krypt_path": saved["vault"]["krypt_path"],
+                "vault_id": saved["vault"]["vault_id"],
                 "metadata": saved["vault"]["metadata"],
                 "ciphertext": base64.b64decode(saved["vault"]["ciphertext"]),
             }
@@ -134,7 +141,7 @@ def _save_state_locked():
     }
     if STATE["vault"] is not None:
         payload["vault"] = {
-            "krypt_path": STATE["vault"]["krypt_path"],
+            "vault_id": STATE["vault"]["vault_id"],
             "metadata": STATE["vault"]["metadata"],
             "ciphertext": base64.b64encode(STATE["vault"]["ciphertext"]).decode("ascii"),
         }
@@ -225,8 +232,20 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
 
         metadata, ciphertext = krypt_container.read_krypt(result["krypt_path"])
 
+        # create_vault_prime (shared with the CLI) always writes its
+        # output to a real file under `outdir` -- that's inherent to its
+        # signature, unchanged here. VAULT_STORE becomes the canonical
+        # home for those bytes going forward: register them under a
+        # fresh vault_id, then remove the scratch file so VAULT_OUTDIR
+        # doesn't accumulate a second, un-tracked copy alongside it.
+        vault_id = str(uuid.uuid4())
+        with open(result["krypt_path"], "rb") as f:
+            krypt_bytes = f.read()
+        VAULT_STORE.store(vault_id, krypt_bytes)
+        os.remove(result["krypt_path"])
+
         STATE["codeword_envelopes"] = envelopes
-        STATE["vault"] = {"krypt_path": result["krypt_path"], "metadata": metadata, "ciphertext": ciphertext}
+        STATE["vault"] = {"vault_id": vault_id, "metadata": metadata, "ciphertext": ciphertext}
         # Recorded once, here, rather than re-derived later from
         # trustee_pubkeys -- if a `candidates`-profile trustee (frank/grace)
         # registers *after* this vault already exists, re-sorting all
@@ -241,7 +260,7 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
         _save_state_locked()
 
         response = {
-            "krypt_path": result["krypt_path"],
+            "vault_id": vault_id,
             "prime_trustee": STATE["trustee_pubkeys"][prime_sub]["username"],
             "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub, _ in pool_assignments],
             "threshold": THRESHOLD,
@@ -250,6 +269,16 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
 
     _broadcast("vault_created", response)
     return response
+
+
+def get_vault_krypt_bytes() -> bytes:
+    with _lock:
+        if STATE["vault"] is None:
+            raise CombinerError("no vault has been created yet", status_code=404)
+        vault_id = STATE["vault"]["vault_id"]
+    # Retrieved outside the lock -- VAULT_STORE has its own I/O, no
+    # reason to hold the combiner's state lock for it.
+    return VAULT_STORE.retrieve(vault_id)
 
 
 def _secure_delete(path: str) -> None:
@@ -480,6 +509,12 @@ def _handle_auth_error(e: keycloak_client.AuthError):
     return jsonify({"error": str(e)}), 401
 
 
+@app.errorhandler(vault_store.VaultStoreError)
+def _handle_vault_store_error(e: vault_store.VaultStoreError):
+    status_code = 404 if isinstance(e, vault_store.VaultNotFoundError) else 500
+    return jsonify({"error": str(e)}), status_code
+
+
 @app.route("/healthz", methods=["GET"])
 def healthz():
     return jsonify({"status": "ok"})
@@ -523,6 +558,18 @@ def admin_vault_create():
     _require_admin()
     result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR)
     return jsonify(result)
+
+
+@app.route("/admin/vault/download", methods=["GET"])
+def admin_vault_download():
+    _require_admin()
+    krypt_bytes = get_vault_krypt_bytes()
+    vault_id = STATE["vault"]["vault_id"]
+    return Response(
+        krypt_bytes,
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{vault_id}.krypt"'},
+    )
 
 
 @app.route("/admin/keycloak/group-members", methods=["GET"])

@@ -189,6 +189,7 @@ docker-compose --profile candidates down -v
 | GET | `/trustees/pending-envelope` | Bearer | Poll for a pending recovery envelope. |
 | POST | `/trustees/shard-reply` | Bearer | Submit a wrapped shard. |
 | POST | `/admin/vault/create` | `X-Admin-Token` | Create the demo vault. |
+| GET | `/admin/vault/download` | `X-Admin-Token` | Download the created `.krypt` container's raw bytes. |
 | GET | `/admin/keycloak/group-members` | `X-Admin-Token` | List the 7 candidates. |
 | POST | `/admin/recovery/start` | `X-Admin-Token` | Arm a recovery session. |
 | POST | `/admin/recovery/finalize` | `X-Admin-Token` | Combine collected shards, decrypt. |
