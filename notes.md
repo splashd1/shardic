@@ -1,3 +1,104 @@
+# Session notes — 2026-07-20 (Claude Code: implemented notification channels, fixed a heartbeat-thread crash found during verification)
+
+## What happened
+
+Direct continuation of the same day's ceremony-formation entry below —
+implemented `docs/notification-channels.md`'s pluggable
+`NotificationChannel` interface, the piece that entry's own follow-up
+list flagged as the natural next step (ceremony invitations were
+already using plain polling as an explicit stand-in for this).
+
+**Built `demo/combiner/notifications.py`**: `NotificationEvent`,
+`NotificationChannel` Protocol, and three implementations —
+`LogLineChannel` (zero-config, always registered), `WebhookChannel`
+(generic operator-supplied URL), `EmailChannel` (demo/test-only, Gmail
+SMTP with `+suffix` addressing to simulate distinct recipients from one
+inbox — using the scheme from the user's own previously-flagged scratch
+note, `demo/shardic demo mail.md`). Wired into `demo/combiner/app.py` at
+the one real call site that exists today: ceremony invitations (both
+initial and backfilled), dispatched outside `_lock` with the same
+non-blocking discipline as `_broadcast`. Config via env vars
+(`NOTIFY_WEBHOOK_URL`, `NOTIFY_EMAIL_*`, `NOTIFY_CEREMONY_INVITE_CHANNELS`),
+threaded through `docker-compose.yml`/`.env.example`. `envelope_ready`/
+`drop_expired` event types deliberately left unwired — they belong to
+`EnvelopeDropPoint`, which doesn't exist in code yet. Docs updated
+(`docs/notification-channels.md` marked implemented v1.0, nomenclature
+docs/skill, both READMEs).
+
+**Verified end-to-end against the real containerized stack** on a new
+machine (`i5buntu`) — first time this repo's been run there, needed the
+now-familiar rootless-podman `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock`
+workaround. Confirmed `log_line` fires for every invitation (initial +
+backfill); `email` genuinely failed first (bad Gmail credential — a
+regular account password, not an App Password) and the non-fatal-failure
+contract held (ceremony formation proceeded regardless, ugly SMTP error
+just logged); after the user enabled 2FA and generated a real App
+Password, re-ran and confirmed clean delivery on both channels for every
+invite including the backfill. Full lifecycle closed: ceremony (erin
+paused pre-initiation, lapsed via TTL, frank backfilled) -> vault created
+with the correct roster -> threshold-3 recovery (carol+dave paused,
+recovered via alice+bob+frank) -> byte-for-byte verify match.
+
+**Found and fixed a real, pre-existing bug while checking logs for
+errors, not anticipated in the plan**: `_heartbeat_loop`
+(`demo/combiner/app.py`) crashed with an unhandled `KeyError` and died
+permanently (plain `while True`, no exception handling, no restart) the
+moment `STATE["trustee_last_seen"]` contained a `sub` with no matching
+`STATE["trustee_pubkeys"]` entry. Root cause: `/trustees/pending-invitation`
+(and the other poll routes) record `trustee_last_seen` for *any*
+authenticated candidate-directory member, not just ones who've completed
+`/trustees/register` — so any verified caller polling before registering
+hits this. First surfaced via a messy test sequence (recreating Keycloak
+mid-session while a trustee container kept running across that boundary
+— the same hazard already documented in an earlier entry below, just
+manifesting as a crash this time instead of a stall), but confirmed
+independently reproducible without that: authenticated an unregistered
+candidate (`grace`) and hit the poll route directly, watched the
+existing code crash the thread. Fixed by skipping `trustee_last_seen`
+entries with no matching `trustee_pubkeys` record in the heartbeat scan,
+rather than indexing straight in; re-verified the same way (grace's poll
+now passes through cleanly, several heartbeat ticks confirmed clean in
+the logs afterward). Once this thread dies in production, dashboard
+live/paused tracking silently stops updating for good — a real
+reliability gap, not cosmetic.
+
+Committed as `d26dfbc` (10 files, 421 insertions), pushed to
+`origin/main` at the user's explicit request. Deliberately did not stage
+`demo/shardic demo mail.md` — still the user's own untracked scratch
+note, same "not mine to touch" treatment as prior entries.
+
+## State at end
+
+Working tree clean except that one untracked user note (unchanged from
+prior entries). `origin/main` at `d26dfbc`. Demo stack fully torn down
+on `i5buntu` — had to force-unpause and `docker rm -f` a leftover paused
+`trustee-erin` container that `docker-compose down` alone couldn't clean
+up; confirmed no containers/network/volumes remain afterward.
+
+## Possibly worth following up
+
+- **Four of five pieces of the ceremony/portability/storage design set
+  are now implemented** (`VaultStore`, `shardic-operator`, ceremony
+  formation, notification channels) — only `portable-trustee-client.md`
+  remains fully proposal-only (a bigger, different undertaking: a whole
+  new browser client, not a combiner-side interface).
+- The heartbeat-thread fix only guards the crash site
+  (`_heartbeat_loop` skips unmatched subs) — it doesn't stop
+  `trustee_last_seen` from accumulating orphan entries for
+  authenticated-but-never-registered callers. Harmless at this scale
+  (demo, finite candidate directory) but worth knowing if this pattern
+  ever needs closer scrutiny.
+- Real Gmail credentials (App Password for `mailertest711@gmail.com`)
+  now live in the user's local `demo/.env` (gitignored, never
+  committed) — first time this repo's notification testing has used a
+  genuinely live external credential rather than a fully self-contained
+  demo secret.
+- Same longstanding carryovers: no automated test suite beyond existing
+  module-level self-tests; Windows `.exe` build parity only ever
+  CI-verified.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: implemented ceremony formation — invitations, decline/TTL, automatic backfill)
 
 ## What happened
