@@ -86,6 +86,38 @@ reuse in a real deployment:
   inside each envelope, the "self-addressed envelope" pattern) against
   Keycloak. Would close the last gap in that pattern's trust story for a
   real deployment; not built here.
+- **The optional email notification channel routes every recipient
+  through one real mailbox** using Gmail's `+suffix` addressing
+  (`mailbox+alice@gmail.com`, `mailbox+bob@gmail.com`, ...) to simulate
+  distinct recipients without provisioning separate mailboxes. A real
+  deployment would resolve an actual per-trustee contact address from
+  wherever its identity model tracks one — which this project's
+  identity model deliberately doesn't (`docs/notification-channel-concept.md`).
+
+## Notification channels
+
+Ceremony invitations (initial and backfilled) fire through the
+pluggable `NotificationChannel` interface from
+[`docs/notification-channels.md`](../docs/notification-channels.md) —
+`demo/combiner/notifications.py`. Three channels ship:
+
+| Channel | Enables when | Notes |
+|---|---|---|
+| `log_line` | Always | Zero-config default; prints `[notify:ceremony_invite] ...` to the combiner's log. |
+| `webhook` | `NOTIFY_WEBHOOK_URL` is set | POSTs the event as JSON to your own URL — the generic operator-supplied escape hatch. |
+| `email` | All five `NOTIFY_EMAIL_*` vars are set | See the simplification above; needs a real Gmail app password in your local `.env`, never committed. |
+
+Which *registered* channels actually fire for ceremony invitations is
+controlled by `NOTIFY_CEREMONY_INVITE_CHANNELS` (comma-separated,
+default `log_line`) — e.g. `log_line,email` once email is configured.
+Multiple enabled channels all fire (fan-out), not a fallback chain.
+
+To try the email channel: fill in `NOTIFY_EMAIL_USERNAME`,
+`NOTIFY_EMAIL_APP_PASSWORD` (a Gmail app password, not your account
+password), and `NOTIFY_EMAIL_BASE_ADDRESS` in your local `.env`, set
+`NOTIFY_CEREMONY_INVITE_CHANNELS=log_line,email`, then re-run step 4
+below — each invited trustee's notification lands at
+`your-mailbox+<username>@gmail.com`.
 
 ## Live dashboard
 
@@ -170,18 +202,24 @@ curl -s -X POST -H "Authorization: Bearer $(operator_token)" -H "Content-Type: a
 ```
 
 Expect 200 with `erin` listed among `invited` (role `pool`) and `frank`
-listed in `backup_queue`.
+listed in `backup_queue`. Each invited slot also fires a notification —
+by default just the zero-config `log_line` channel
+(`docs/notification-channels.md`), so expect a `[notify:ceremony_invite]`
+line per primary in the combiner's log right after this call. See
+["Notification channels"](#notification-channels) below to enable
+webhook/email too.
 
 **5. Watch erin's invitation lapse and frank get backfilled in her
 place.** Wait past the TTL, then check the combiner's log:
 
 ```sh
 sleep 22
-docker-compose logs combiner | grep -i "ceremony\|backfill"
+docker-compose logs combiner | grep -i "ceremony\|backfill\|notify"
 ```
 
 Expect, in order: `... pool invitation to erin expired`, `... backfilled
-pool slot with frank`, then — once frank's (unpaused) container polls and
+pool slot with frank`, a fresh `[notify:ceremony_invite]` line for frank's
+backfilled invitation, then — once frank's (unpaused) container polls and
 auto-accepts — `... ceremony ... formed -- ready for vault creation`.
 Unpause erin now; she's not part of this ceremony, but there's no reason
 to leave her paused:

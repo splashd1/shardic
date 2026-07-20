@@ -39,6 +39,7 @@ explicitly.
 | **Candidate directory** | The org-wide set of registered trustees (`STATE["trustee_pubkeys"]`), before any ceremony selects from them. Not "pool" — collides with shardic-prime's pool trustee. |
 | **Ceremony formation** | Operator-initiated selection of T primaries + an ordered backup list, invitations, and automatic backfill on decline/timeout. Implemented, per `docs/ceremony-formation.md`. |
 | **Invitation** / **Backfill** | A per-trustee ceremony-formation slot record, and the race-safe promotion of the next backup into a lapsed slot. Both implemented. |
+| **`NotificationChannel`** | Pluggable, admin-configurable, fan-out delivery of a non-secret prompt. `demo/combiner/notifications.py`; wired into ceremony invitations only so far. |
 
 **The one pair to never confuse:** *share = at rest, in the vault,
 pre-match. Shard = in motion, post-match, en route to the combiner.*
@@ -194,6 +195,15 @@ inheriting that slot's role (prime or pool). Race-safe:
 *current* occupant, so a late accept from an already-backfilled
 primary gets a 409, not a double-fill.
 
+**`NotificationChannel`** (`Protocol`, implemented in
+`demo/combiner/notifications.py`: `LogLineChannel`, `WebhookChannel`,
+`EmailChannel`, `NotificationDispatcher`) — pluggable,
+admin-configurable delivery of a non-secret prompt, fanned out to
+every enabled channel for a given event type (not a fallback chain).
+Wired into ceremony invitations (initial and backfilled) only —
+`envelope_ready`/`drop_expired` await `envelope-delivery.md`'s
+still-unbuilt `EnvelopeDropPoint`.
+
 ### Proposed-but-not-implemented vocabulary
 
 These exist only in `docs/*.md` design proposals — no code implements
@@ -206,11 +216,6 @@ doesn't assume they're live:
   shape backing `CredentialLookup`.
 - **`EnvelopeDropPoint`** (`Protocol`, `docs/envelope-delivery.md`) —
   pull-based, single-read delivery point for a wrapped envelope.
-- **`NotificationChannel`** (`Protocol`, `docs/notification-channels.md`)
-  — pluggable, admin-configurable delivery of a non-secret prompt;
-  would be shared by ceremony invites, envelope-ready pings, and
-  drop-expired alerts. The v1.0 ceremony-formation implementation uses
-  plain polling instead, pending this.
 
 ## Lifecycle-state adjectives
 

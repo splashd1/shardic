@@ -29,6 +29,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import keycloak_client
 import krypt_container
+import notifications
 import shardic_envelope_crypto
 import vault_core_prime
 import vault_store
@@ -62,6 +63,43 @@ HEARTBEAT_SCAN_INTERVAL_S = 2
 # ceremony scan loop backfills it from the ordered backup list.
 CEREMONY_INVITE_TTL_S = float(os.environ.get("CEREMONY_INVITE_TTL_S", "20"))
 CEREMONY_SCAN_INTERVAL_S = 2
+
+
+def _build_notification_dispatcher() -> notifications.NotificationDispatcher:
+    """Registers whichever NotificationChannel implementations have
+    the env vars to construct them, then wires event types to the
+    admin-configured subset of channel names -- see
+    docs/notification-channels.md. LogLineChannel needs no
+    configuration and is always registered; webhook/email only
+    register if their env vars are actually set, so an unconfigured
+    demo still starts with zero notification setup required."""
+    channels: dict[str, notifications.NotificationChannel] = {"log_line": notifications.LogLineChannel()}
+
+    webhook_url = os.environ.get("NOTIFY_WEBHOOK_URL")
+    if webhook_url:
+        channels["webhook"] = notifications.WebhookChannel(webhook_url)
+
+    smtp_host = os.environ.get("NOTIFY_EMAIL_SMTP_HOST")
+    smtp_port = os.environ.get("NOTIFY_EMAIL_SMTP_PORT")
+    email_username = os.environ.get("NOTIFY_EMAIL_USERNAME")
+    email_app_password = os.environ.get("NOTIFY_EMAIL_APP_PASSWORD")
+    email_base_address = os.environ.get("NOTIFY_EMAIL_BASE_ADDRESS")
+    if smtp_host and smtp_port and email_username and email_app_password and email_base_address:
+        channels["email"] = notifications.EmailChannel(
+            smtp_host, int(smtp_port), email_username, email_app_password, email_base_address
+        )
+
+    event_channels = {
+        "ceremony_invite": [
+            name.strip()
+            for name in os.environ.get("NOTIFY_CEREMONY_INVITE_CHANNELS", "log_line").split(",")
+            if name.strip()
+        ],
+    }
+    return notifications.NotificationDispatcher(channels, event_channels)
+
+
+NOTIFIER = _build_notification_dispatcher()
 
 app = Flask(__name__)
 _lock = threading.Lock()
@@ -254,12 +292,27 @@ def initiate_ceremony(
             "backup_queue": backup_queue,
             "status": "forming",
         }
+        invited = [{"role": s["role"], "username": STATE["trustee_pubkeys"][s["sub"]]["username"]} for s in slots]
         response = {
             "ceremony_id": ceremony_id,
-            "invited": [{"role": s["role"], "username": STATE["trustee_pubkeys"][s["sub"]]["username"]} for s in slots],
+            "invited": invited,
             "backup_queue": [STATE["trustee_pubkeys"][sub]["username"] for sub in backup_queue],
         }
+        notify_events = [
+            notifications.NotificationEvent(
+                "ceremony_invite", s["sub"], STATE["trustee_pubkeys"][s["sub"]]["username"],
+                {"ceremony_id": ceremony_id, "role": s["role"], "ttl_expires_at": s["invited_at"] + CEREMONY_INVITE_TTL_S},
+            )
+            for s in slots
+        ]
     _broadcast("ceremony_initiated", response)
+    # Outside the lock, same discipline as _broadcast -- a slow or
+    # unreachable channel (webhook/email) must never block ceremony
+    # operations. This is a proactive nudge, not the delivery
+    # mechanism itself; the trustee still discovers and accepts the
+    # invitation by polling regardless of whether any of this reaches them.
+    for event in notify_events:
+        NOTIFIER.notify(event)
     return response
 
 
@@ -279,28 +332,34 @@ def get_pending_invitation(sub: str) -> dict | None:
         return None
 
 
-def _lapse_slot_locked(slot: dict) -> tuple[str, dict]:
+def _lapse_slot_locked(slot: dict) -> tuple[tuple[str, dict], notifications.NotificationEvent | None]:
     """Caller must hold _lock. Marks slot open and immediately tries to
     backfill it from the shared, ordered backup queue -- decline
     short-circuits the wait; the ceremony scan loop reaches the same
     call once the TTL elapses. Both funnel through here, matching
     "decline and timeout are just non-acceptance" from
     docs/ceremony-formation.md#decline--no-response-handling. Returns
-    the (event_type, event_data) to broadcast once _lock is released."""
+    the (event_type, event_data) to broadcast, plus a NotificationEvent
+    for the newly-invited backfill (or None on failure) -- both to be
+    fired once _lock is released."""
     ceremony = STATE["ceremony"]
     if not ceremony["backup_queue"]:
         slot["status"] = "open"
         ceremony["status"] = "failed"
         print(f"ceremony {ceremony['ceremony_id']} failed: backup list exhausted, "
               f"no candidate left to fill the {slot['role']} slot")
-        return ("ceremony_failed", {"ceremony_id": ceremony["ceremony_id"]})
+        return ("ceremony_failed", {"ceremony_id": ceremony["ceremony_id"]}), None
     next_sub = ceremony["backup_queue"].pop(0)
     slot["sub"] = next_sub
     slot["status"] = "invited"
     slot["invited_at"] = time.time()
     username = STATE["trustee_pubkeys"][next_sub]["username"]
     print(f"ceremony {ceremony['ceremony_id']}: backfilled {slot['role']} slot with {username}")
-    return ("backfill_invited", {"ceremony_id": ceremony["ceremony_id"], "role": slot["role"], "username": username})
+    notify_event = notifications.NotificationEvent(
+        "ceremony_invite", next_sub, username,
+        {"ceremony_id": ceremony["ceremony_id"], "role": slot["role"], "ttl_expires_at": slot["invited_at"] + CEREMONY_INVITE_TTL_S},
+    )
+    return ("backfill_invited", {"ceremony_id": ceremony["ceremony_id"], "role": slot["role"], "username": username}), notify_event
 
 
 def _maybe_finalize_formation_locked() -> tuple[str, dict] | None:
@@ -315,6 +374,7 @@ def _maybe_finalize_formation_locked() -> tuple[str, dict] | None:
 
 def respond_to_invitation(sub: str, ceremony_id: str, accept: bool) -> dict:
     events = []
+    notify_events = []
     with _lock:
         STATE["trustee_last_seen"][sub] = time.time()
         ceremony = STATE["ceremony"]
@@ -338,12 +398,17 @@ def respond_to_invitation(sub: str, ceremony_id: str, accept: bool) -> dict:
                 events.append(evt)
         else:
             print(f"{username} declined their {slot['role']} invitation for ceremony {ceremony_id}")
-            events.append(_lapse_slot_locked(slot))
+            broadcast_evt, notify_evt = _lapse_slot_locked(slot)
+            events.append(broadcast_evt)
+            if notify_evt is not None:
+                notify_events.append(notify_evt)
         events.append(("invitation_responded", {"ceremony_id": ceremony_id, "role": slot["role"], "accept": accept}))
         result = {"status": slot["status"]}
 
     for evt_type, evt_data in events:
         _broadcast(evt_type, evt_data)
+    for notify_evt in notify_events:
+        NOTIFIER.notify(notify_evt)
     return result
 
 
@@ -356,6 +421,7 @@ def _ceremony_scan_loop() -> None:
     while True:
         time.sleep(CEREMONY_SCAN_INTERVAL_S)
         events = []
+        notify_events = []
         with _lock:
             ceremony = STATE["ceremony"]
             if ceremony is not None and ceremony["status"] == "forming":
@@ -366,9 +432,14 @@ def _ceremony_scan_loop() -> None:
                         role = slot["role"]
                         print(f"ceremony {ceremony['ceremony_id']}: {role} invitation to {username} expired")
                         events.append(("invitation_expired", {"ceremony_id": ceremony["ceremony_id"], "role": role, "username": username}))
-                        events.append(_lapse_slot_locked(slot))
+                        broadcast_evt, notify_evt = _lapse_slot_locked(slot)
+                        events.append(broadcast_evt)
+                        if notify_evt is not None:
+                            notify_events.append(notify_evt)
         for evt_type, evt_data in events:
             _broadcast(evt_type, evt_data)
+        for notify_evt in notify_events:
+            NOTIFIER.notify(notify_evt)
 
 
 def do_create_vault(input_path: str, outdir: str) -> dict:
@@ -626,6 +697,15 @@ def _heartbeat_loop() -> None:
         transitions = []
         with _lock:
             for sub, last_seen in STATE["trustee_last_seen"].items():
+                # A verified caller polling before it's ever completed
+                # /trustees/register (or, as found in testing, a Keycloak
+                # realm re-import minting a new sub for an
+                # already-running trustee mid-session) has no
+                # trustee_pubkeys record yet -- skip rather than crash
+                # the thread, which would silently kill liveness
+                # tracking for the rest of the process's life.
+                if sub not in STATE["trustee_pubkeys"]:
+                    continue
                 status = "paused" if (now - last_seen) > HEARTBEAT_TIMEOUT_S else "live"
                 if STATE["trustee_status"].get(sub) != status:
                     STATE["trustee_status"][sub] = status

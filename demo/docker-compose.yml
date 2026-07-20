@@ -62,6 +62,20 @@ services:
       SAMPLE_SECRET_PATH: /data/sample-secret
       VAULT_OUTDIR: /data/vault
       RECOVERED_OUTDIR: /data/recovered
+      # Notification channels -- see docs/notification-channels.md.
+      # log_line needs no config and is always on. webhook/email only
+      # activate if their vars are actually set (unset is empty string
+      # here, which _build_notification_dispatcher() treats as "don't
+      # register this channel"). NOTIFY_CEREMONY_INVITE_CHANNELS
+      # decides which *registered* channels actually fire for ceremony
+      # invitations -- e.g. "log_line,email" once email is configured.
+      NOTIFY_CEREMONY_INVITE_CHANNELS: ${NOTIFY_CEREMONY_INVITE_CHANNELS:-log_line}
+      NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+      NOTIFY_EMAIL_SMTP_HOST: ${NOTIFY_EMAIL_SMTP_HOST:-}
+      NOTIFY_EMAIL_SMTP_PORT: ${NOTIFY_EMAIL_SMTP_PORT:-}
+      NOTIFY_EMAIL_USERNAME: ${NOTIFY_EMAIL_USERNAME:-}
+      NOTIFY_EMAIL_APP_PASSWORD: ${NOTIFY_EMAIL_APP_PASSWORD:-}
+      NOTIFY_EMAIL_BASE_ADDRESS: ${NOTIFY_EMAIL_BASE_ADDRESS:-}
     volumes:
       - combiner-data:/data
       - ./sample-secret:/data/sample-secret:ro,Z

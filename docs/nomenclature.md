@@ -43,6 +43,7 @@ not a reason to merge them.
 | **Ceremony formation** | The operator-initiated process of selecting T primaries + an ordered backup list, issuing invitations, and handling decline/timeout via automatic backfill, until every slot is accepted (`formed`) or the backup list is exhausted (`failed`). Implemented: `initiate_ceremony()`, `_ceremony_scan_loop()`, and related functions in `demo/combiner/app.py`, per `docs/ceremony-formation.md`. | shardic-envelope |
 | **Invitation** | A per-trustee ceremony-formation slot record (`{role, sub, status, invited_at}`), discovered by polling `GET /trustees/pending-invitation` and responded to via `POST /trustees/invitation-response`. Never triggers a fresh keypair — distinct from registration. Implemented, per `docs/ceremony-formation.md`. | shardic-envelope |
 | **Backfill** | Automatic promotion of the next-ranked candidate on a ceremony's ordered backup list into a lapsed slot, inheriting that slot's role (prime or pool). Race-safe: `respond_to_invitation()` only accepts a response from the slot's *current* occupant. Implemented, per `docs/ceremony-formation.md`. | shardic-envelope |
+| `NotificationChannel` (`Protocol`) | Pluggable, admin-configurable delivery of a non-secret prompt, fanned out to every enabled channel per event type. Implemented: `demo/combiner/notifications.py` (`LogLineChannel`/`WebhookChannel`/`EmailChannel`), wired into ceremony invitations only — `envelope_ready`/`drop_expired` await `envelope-delivery.md`'s still-unbuilt `EnvelopeDropPoint`. | shardic-envelope |
 
 ### Proposed-but-not-implemented vocabulary
 
@@ -53,7 +54,6 @@ Design-stage terms from `docs/*.md` proposals — no code implements these yet.
 | `CredentialLookup` (`Protocol`) | Resolves a trustee's registered public key. | `docs/pubkey-envelope-plugin.md` |
 | `PublicKeyRecord` | The data shape backing `CredentialLookup`. | `docs/pubkey-envelope-plugin.md` |
 | `EnvelopeDropPoint` (`Protocol`) | Pull-based, single-read delivery point for a wrapped envelope. | `docs/envelope-delivery.md` |
-| `NotificationChannel` (`Protocol`) | Pluggable, admin-configurable delivery of a non-secret prompt (ceremony invite, envelope-ready ping, drop-expired alert). The v1.0 ceremony-formation implementation uses plain polling instead, pending this. | `docs/notification-channels.md` |
 
 ## Lifecycle-state adjectives
 

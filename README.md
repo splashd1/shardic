@@ -80,31 +80,31 @@ government and business scenarios.
 - `docs/pubkey-envelope-plugin.md` — **shardic-envelope**, a design proposal (not yet implemented) for a bolt-on plugin that wraps each trustee's codeword under their own public key, trading memorability for arbitrarily larger/higher-entropy codewords protected by a keypair instead of memory.
 - [`docs/keycloak-credential-lookup.md`](docs/keycloak-credential-lookup.md) — a Keycloak-backed `CredentialLookup` for shardic-envelope: selecting trustees from a Keycloak group, an OIDC-authenticated client-side-only key registration flow, and the `shardic-operator` role that authenticates and authorizes privileged combiner actions. **The operator role (identity, authorization, and separation-of-duties) is implemented and verified in `demo/`**; the trustee key-registration flow itself is still a design proposal.
 - [`docs/portable-trustee-client.md`](docs/portable-trustee-client.md) — a design proposal (not yet implemented) for a browser-based trustee app (registration, key custody, ceremony participation) replacing today's per-trustee Docker container: WebCrypto X25519 keypair generation, non-extractable-key custody, device-bound portability (re-register on device loss, no export path), and the accepted browser-XSS residual risk this trades for.
-- [`docs/ceremony-formation.md`](docs/ceremony-formation.md) — **implemented and verified end-to-end in `demo/`**: how one specific ceremony gets formed from the registered candidate directory — operator-initiated T/D selection with an ordered backup list, per-trustee invitations (polling-based in the demo), and automatic race-safe backfill when a slot is declined or times out.
+- [`docs/ceremony-formation.md`](docs/ceremony-formation.md) — **implemented and verified end-to-end in `demo/`**: how one specific ceremony gets formed from the registered candidate directory — operator-initiated T/D selection with an ordered backup list, per-trustee invitations, and automatic race-safe backfill when a slot is declined or times out.
 - [`docs/envelope-delivery.md`](docs/envelope-delivery.md) — a design proposal (not yet implemented) for getting a wrapped envelope from a shardic-envelope wrap event to the right trustee: a pull-based, single-read drop point modeled on Vault-style response-wrapping, authenticated by the same OIDC session as registration.
 - [`docs/notification-channel-concept.md`](docs/notification-channel-concept.md) — a concept paper (one step earlier than a design proposal — no channel chosen yet) laying out the need, options, and design-choice drivers for the trustee-facing "go pull your envelope" ping and the operator-facing "unredeemed drop expired" alert that `envelope-delivery.md` left open.
-- [`docs/notification-channels.md`](docs/notification-channels.md) — a design proposal (not yet implemented) resolving the concept paper above into a single pluggable, admin-configurable `NotificationChannel` interface shared by all three notification events in this lifecycle (ceremony invite, envelope-ready ping, drop-expired alert). The implemented ceremony-formation invitations use plain polling instead, pending this.
+- [`docs/notification-channels.md`](docs/notification-channels.md) — **implemented and verified in `demo/`**: a single pluggable, admin-configurable `NotificationChannel` interface (log-line/webhook/email, fan-out delivery) resolving the concept paper above. Wired into ceremony invitations only — the other two event types this doc names (envelope-ready ping, drop-expired alert) await `envelope-delivery.md`'s still-unbuilt drop point.
 - [`docs/vault-storage-backend.md`](docs/vault-storage-backend.md) — **implemented in `demo/`**: a pluggable `VaultStore` interface behind the combiner's `.krypt` storage, replacing the old hardcoded filesystem path — filesystem-backed by default in v1.0, SQL/NoSQL as a still-unbuilt config-selected alternate implementation, no bundled database.
 
   Together, these seven documents describe one proposed operational
-  lifecycle for shardic-envelope. Two full stages are implemented and
-  verified against the real `demo/` stack — **form** and the `.krypt`
-  storage behind **wrap** — the rest remain design proposals:
-  **register** (trustee generates a keypair client-side, via
-  `portable-trustee-client.md`, and registers the public half per
-  `keycloak-credential-lookup.md`, once, ahead of any ceremony) →
-  **form** (an authenticated operator initiates a specific ceremony and
-  invites T trustees from the directory, per `ceremony-formation.md`;
-  the design's own pluggable channel interface,
-  `notification-channels.md`, isn't built — the demo polls instead) →
-  **wrap** (operator runs shardic-envelope per
+  lifecycle for shardic-envelope. Three full pieces are implemented and
+  verified against the real `demo/` stack — **form** (including its
+  notification channel), and the `.krypt` storage behind **wrap** — the
+  rest remain design proposals: **register** (trustee generates a
+  keypair client-side, via `portable-trustee-client.md`, and registers
+  the public half per `keycloak-credential-lookup.md`, once, ahead of
+  any ceremony) → **form** (an authenticated operator initiates a
+  specific ceremony and invites T trustees from the directory, per
+  `ceremony-formation.md`, notified via `notification-channels.md`'s
+  pluggable interface) → **wrap** (operator runs shardic-envelope per
   `pubkey-envelope-plugin.md`, which looks up each trustee's public key
   via the same registry; the resulting `.krypt` bytes are persisted via
   `vault-storage-backend.md`'s `VaultStore`) → **deliver** (each
   envelope lands in the drop point from `envelope-delivery.md` for the
-  trustee to pull, notified via the same shared channel interface) →
-  **recover** (trustee decrypts locally and types the resulting
-  codeword into `vault_recover.py`/the GUI, unchanged from today).
+  trustee to pull, notified via the same shared channel interface, once
+  that drop point exists) → **recover** (trustee decrypts locally and
+  types the resulting codeword into `vault_recover.py`/the GUI,
+  unchanged from today).
 - [`docs/shardic-envelope-explainer.html`](docs/shardic-envelope-explainer.html) — a static, illustrated walkthrough of the shardic-envelope ceremony's four phases (Formation, Protected & Dormant, Threshold-Proof, Finalize & Verify), for anyone who can't run the live `demo/` stack. Open it directly in a browser.
 - [`docs/nomenclature.md`](docs/nomenclature.md) — the canonical glossary and lifecycle-state vocabulary for shardic's domain objects (vault, share, shard, trustee, combiner, etc.), grounded in actual code usage. Also available as a Claude Code skill (`.claude/skills/shardic-nomenclature/`) that loads automatically for naming-sensitive work.
 - [`docs/sss_explained_for_shardic.md`](docs/sss_explained_for_shardic.md) — a standalone, complete explainer of Shamir's Secret Sharing: the geometric intuition, the precise polynomial construction, why the arithmetic runs over GF(256), and how shardic builds on it. The white paper's §1.4 gives a shorter in-context version of the same intuition before §3.2's mechanics; this is the full reference.
