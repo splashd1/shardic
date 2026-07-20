@@ -1,3 +1,115 @@
+# Session notes — 2026-07-19 (Claude Code: portable trustee client — ceremony flow, op-role, decline handling)
+
+## What happened
+
+Direct continuation of the web-chat design brief below (same day), this
+time in Claude Code — pure design discussion, no code touched, working
+tree stayed clean throughout. Worked through several of the open items
+that entry flagged, plus new ones the user raised.
+
+**Registration model fork resolved**: ceremony invitations do *not*
+trigger fresh keygen. Pool registration (once, ahead of any ceremony)
+is where the persistent keypair is generated and pubkey pushed to the
+combiner — unchanged from today's confirmed model (pubkey reusable
+across future vaults). A ceremony invitation is just "you're selected
+for this ceremony, confirm + here's where to send your shard," not a
+second registration event. Resolved via explicit choice among three
+options (persistent-reused / fresh-per-ceremony / hybrid-derived-subkey)
+— persistent-reused chosen.
+
+**Plan A ceremony sequence** (as refined this session): candidate pool
+enrollment (email-verified IAM identity → OIDC registration → client-
+side keygen → pubkey to combiner, decoupled from container startup) →
+ceremony initiation by an operator (defines vault contents, T/D incl.
+Prime-T, selects T from pool) → ephemeral per-trustee invitations
+(resolves the previously-open "combiner discovery" question from
+`docs/keycloak-credential-lookup.md` — the invitation link doubles as
+discovery + a fresh liveness/PoP check) → ceremony proceeds as today.
+
+**Op-role gap resolved**: checked actual code first
+(`demo/combiner/app.py:44,460-552`) — today *every* privileged action
+(vault create, recovery start/finalize/verify, even Keycloak group-
+membership reads) is gated by one static shared bearer token
+(`COMBINER_ADMIN_TOKEN`/`_require_admin()`), no identity or audit trail
+behind it. Decided: promote operator to a real Keycloak-authenticated
+role (`shardic-operator`), same realm as the trustee pool but with its
+own OIDC client, own `OPERATOR_OIDC_ISSUER`-style config (even though it
+resolves to the same Keycloak URL today), and authorization by role
+claim rather than realm identity — chosen specifically so a future
+split to a fully separate realm is a config change, not a
+re-architecture. Also decided: separation of duties is enforced, not
+just policy — an operator can never self-select into the T pool for a
+ceremony they initiate; needs an explicit identity check (`sub`
+comparison) at selection time, across the full backup list too (see
+below), not just the initial T.
+
+**Decline/no-response handling resolved**: distinguished from the
+already-solved live-participation problem (dashboard's heartbeat/pause
+detection, unrelated). For ceremony *formation*: operator names T
+primaries + an ordered backup list at initiation. Invitations carry a
+TTL; decline and silent timeout are treated identically (both just
+"non-acceptance"). Backfill is **automatic** — next ranked backup
+invited the moment a slot lapses, no operator round-trip needed. Flagged
+two implementation requirements that fell out of this: slot-closing
+must be race-safe (first valid acceptance per slot wins; a late accept
+from an already-backfilled primary must hit a dead link), and the
+separation-of-duties check applies across the whole backup list, not
+just the primaries.
+
+**New concerns catalogued, not yet resolved** (user's own list, batched
+for later): browser XSS residual risk (a non-extractable `CryptoKey`
+can't be exported by injected script, but live XSS during an active
+session could still invoke it on the attacker's behalf — a real gap the
+container model doesn't have), `.krypt` file archiving/durability/
+availability (security-at-rest is already solved by zero-leakage
+indexing; long-term custody/replication of the file itself is
+undesigned — no existing doc covers it), and trustee private-key
+portability across devices (this is the same "portable vs. roams across
+devices" caveat flagged unresolved in the entry below — non-extractable
+key + IndexedDB is device-bound by construction; the fork is
+device-bound-with-re-registration-on-loss vs. an exportable/passphrase-
+wrapped credential that reopens the "protect a secret" problem the
+pubkey-envelope design exists to avoid).
+
+Tracked all of the above as tasks (#1-5) via TaskCreate/TaskUpdate
+during the session; #1 (op-role gap) and #5 (decline/no-response) are
+marked completed at the design-decision level. #2 (XSS), #3 (krypt
+archiving), #4 (privkey portability) remain open/pending — these are
+Claude Code task-list entries local to that session's process, not
+persisted anywhere durable, so they won't carry over automatically to a
+fresh session; this notes.md entry is the durable record.
+
+## State at end
+
+Working tree clean, no commits this session (design-only). `origin/main`
+unchanged. Still using AskUserQuestion to force explicit decisions on
+forks rather than assuming — worked well this session for the
+registration-model, realm-structure, self-selection, and backfill-
+trigger decisions above.
+
+## Possibly worth following up
+
+- **Invitation delivery channel** — still open, and now more concrete
+  than when `docs/notification-channel-concept.md` first scoped it: the
+  channel choice directly determines how "lapsed" gets detected (read
+  receipt vs. link-visited vs. pure TTL). Pick from that doc's existing
+  option table rather than re-deriving.
+- The three catalogued-not-resolved concerns above (XSS, krypt
+  archiving, privkey portability) are the natural next design threads.
+- None of this session's decisions are written into any `docs/` file
+  yet — still purely captured here in notes.md and in the conversation.
+  Worth promoting into `docs/keycloak-credential-lookup.md` (operator
+  role, ceremony sequence) and a new doc for the ceremony-formation/
+  backfill logic once the remaining open items settle, rather than
+  letting this notes.md entry be the only record long-term.
+- Realm-structure design note to remember if implementation starts:
+  operator's OIDC issuer/client must be configured as its own named
+  setting from day one, not hardcoded to "the trustee realm," even
+  though today they'd point at the same Keycloak URL — that's the whole
+  point of keeping the future realm-split cheap.
+
+---
+
 # Session notes — 2026-07-19 (web-chat design discussion: portable trustee client)
 
 ## What happened
