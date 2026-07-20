@@ -25,6 +25,15 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      # Fixes the issuer to one value regardless of which hostname a
+      # request arrives on. Without this, start-dev derives the issuer
+      # per-request (localhost:8080 from the host vs. keycloak:8080
+      # from other containers), and a token minted via one hostname
+      # fails userinfo verification via the other -- bit the operator
+      # token flow below (host-side curl, container-side verification)
+      # the moment it was added; trustee auth never crossed this
+      # boundary since trustees always use keycloak:8080 for both.
+      KC_HOSTNAME: http://keycloak:8080
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro,Z
     ports:
@@ -48,7 +57,8 @@ services:
       KEYCLOAK_REALM: shardic-demo
       ADMIN_CLIENT_ID: shardic-combiner-admin
       ADMIN_CLIENT_SECRET: ${ADMIN_CLIENT_SECRET}
-      COMBINER_ADMIN_TOKEN: ${COMBINER_ADMIN_TOKEN}
+      OPERATOR_OIDC_ISSUER: http://keycloak:8080
+      OPERATOR_REALM: shardic-demo
       SAMPLE_SECRET_PATH: /data/sample-secret
       VAULT_OUTDIR: /data/vault
       RECOVERED_OUTDIR: /data/recovered

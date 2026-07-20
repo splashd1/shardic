@@ -34,6 +34,7 @@ explicitly.
 | **Combiner** | The service holding ciphertext + wrapped envelopes; orchestrates registration/recovery; never sees a codeword. |
 | **Recovery session** | One combiner-tracked recovery attempt, identified by `session_id`. Ephemeral — doesn't survive a combiner restart. |
 | **`VaultStore`** | Pluggable backing store for the combiner's `.krypt` bytes, keyed by `vault_id`. `FilesystemVaultStore` (`demo/combiner/vault_store.py`) is the only backend shipped. |
+| **`shardic-operator`** | Keycloak realm role required for every `/admin/*` combiner route. Replaces the old shared `COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement is a separate, still-unbuilt piece. |
 | **Ceremony** | *(recommended, not yet settled — see below)* The umbrella term for the whole registration→verified-recovery arc. |
 
 **The one pair to never confuse:** *share = at rest, in the vault,
@@ -144,6 +145,15 @@ is the only backend shipped (v1.0, matches what the combiner already
 did before this existed); SQL/NoSQL stay a future, config-selected
 alternate implementation, per `docs/vault-storage-backend.md`.
 
+**`shardic-operator`** (Keycloak realm role, implemented in
+`demo/keycloak/realm-export.json` + `demo/combiner/app.py`'s
+`_require_operator()`) — the authenticated role required for every
+`/admin/*` combiner route, replacing the old shared
+`COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement (an operator
+can't self-select as a ceremony trustee) is *not* implemented — it
+depends on `docs/ceremony-formation.md`'s still-unbuilt T-selection
+step, per that doc's own "operator role" section.
+
 **Ceremony** *(recommended, not yet settled)* — proposed as the
 standard umbrella term for the whole arc from trustee registration
 through a verified recovery. Not present in the original core codebase
@@ -174,10 +184,6 @@ doesn't assume they're live:
   them. Deliberately *not* called "pool" — that word is already taken
   by the unrelated shardic-prime **pool trustee** concept (a per-vault
   D−1 group); reusing it here would collide.
-- **`shardic-operator`** (Keycloak role, `docs/keycloak-credential-lookup.md`)
-  — the authenticated role required to initiate a ceremony or perform
-  any other combiner-privileged action. Proposed replacement for
-  today's single shared `COMBINER_ADMIN_TOKEN`.
 - **Invitation** (`docs/ceremony-formation.md`) — an ephemeral,
   per-trustee message issued at ceremony-initiation time, naming which
   combiner instance is running *this* ceremony and carrying a TTL and a

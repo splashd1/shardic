@@ -41,10 +41,18 @@ reuse in a real deployment:
   an interactive browser OIDC flow; a real deployment would use the
   interactive/device-code flow `docs/keycloak-credential-lookup.md`
   already designs.
-- **The combiner's `/admin/*` routes are gated by a static shared-secret
-  header** (`X-Admin-Token`), not a third Keycloak identity — the
-  "operator" here is the human running the curl commands below, not a
-  modeled Keycloak principal.
+- **The combiner's `/admin/*` routes require a real Keycloak-authenticated
+  `shardic-operator` role**, per
+  [`docs/keycloak-credential-lookup.md`](../docs/keycloak-credential-lookup.md#the-operator-role)
+  — the operator authenticates the same way trustees do (Direct Access
+  Grant, plaintext demo password), which is the shortcut here, not the
+  identity model itself. Separation-of-duties enforcement (an operator
+  can never select themselves as a ceremony trustee) isn't built yet —
+  it depends on
+  [`docs/ceremony-formation.md`](../docs/ceremony-formation.md)'s
+  T-selection step, which this demo doesn't have: today `/admin/vault/create`
+  still just uses all 5 registered trustees, no selection to check
+  self-exclusion against.
 - **The combiner's Keycloak service account has the realm-wide
   `view-users` role**, not fine-grained group-scoped admin permissions
   (which are correct but fiddly to hand-author in a realm export). Its
@@ -66,10 +74,10 @@ Once `keycloak`, `combiner`, and the selected trustees are up, open
 of the ceremony instead of reading curl output: trustee registration and
 live/paused status arrive over Server-Sent Events as they happen, and the
 same `/admin/*` actions from the walkthrough below are available as buttons
-(paste `$COMBINER_ADMIN_TOKEN` from `.env` into the token field first). The
-dashboard is a pure bolt-on — a dashboard tab open or closed has no effect
-on the curl-driven walkthrough, and vice versa; both drive the same
-combiner state.
+(paste an operator Bearer token — see step 4 below for how to fetch one —
+into the token field first). The dashboard is a pure bolt-on — a dashboard
+tab open or closed has no effect on the curl-driven walkthrough, and vice
+versa; both drive the same combiner state.
 
 ## Prerequisites
 
@@ -105,21 +113,35 @@ undefined-started (they're tagged with the `candidates` profile, so a plain
 
 **3. Registration is automatic.** Each trustee authenticates to Keycloak,
 generates a local keypair, and registers its public key with the combiner
-within a few seconds of starting:
+within a few seconds of starting. `/admin/*` routes need an authenticated
+**operator** — someone holding the `shardic-operator` Keycloak role, not a
+shared secret — so define a helper that fetches a fresh Bearer token
+(Direct Access Grant, the same demo-only shortcut the trustees use):
 
 ```sh
 docker-compose logs trustee-alice   # look for "registered with combiner"
 
-curl -s -H "X-Admin-Token: $(grep COMBINER_ADMIN_TOKEN .env | cut -d= -f2)" \
+operator_token() {
+  curl -s -X POST http://localhost:8080/realms/shardic-demo/protocol/openid-connect/token \
+    -d grant_type=password -d client_id=shardic-operator-client \
+    -d username=operator -d "password=$(grep OPERATOR_PASSWORD .env | cut -d= -f2)" \
+    -d scope=openid | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])"
+}
+
+curl -s -H "Authorization: Bearer $(operator_token)" \
   http://localhost:5000/admin/keycloak/group-members
 # shows all 7 candidates, for narrative context
 ```
 
+`operator_token` fetches a fresh token on every call (Keycloak's default
+access-token lifespan is short), so it's safe to keep calling it across a
+slow, narrated walkthrough rather than reusing one variable that might
+expire mid-demo.
+
 **4. Create the demo vault:**
 
 ```sh
-ADMIN_TOKEN=$(grep COMBINER_ADMIN_TOKEN .env | cut -d= -f2)
-curl -s -X POST -H "X-Admin-Token: $ADMIN_TOKEN" http://localhost:5000/admin/vault/create
+curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/vault/create
 ```
 
 Expect a 200 with `prime_trustee` (alphabetically-first of the 5 registered
@@ -144,7 +166,7 @@ docker-compose pause trustee-dave trustee-erin
 **7. Trigger recovery:**
 
 ```sh
-curl -s -X POST -H "X-Admin-Token: $ADMIN_TOKEN" http://localhost:5000/admin/recovery/start
+curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/recovery/start
 ```
 
 Wait a few seconds (poll interval) for the 3 live trustees to notice, decrypt
@@ -158,7 +180,7 @@ docker-compose logs -f trustee-alice trustee-bob trustee-carol
 **8. Finalize:**
 
 ```sh
-curl -s -X POST -H "X-Admin-Token: $ADMIN_TOKEN" http://localhost:5000/admin/recovery/finalize
+curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/recovery/finalize
 ```
 
 Expect 200 with `"trustees_used": ["alice", "bob", "carol"]` — proving
@@ -188,12 +210,12 @@ docker-compose --profile candidates down -v
 | GET | `/vault/metadata` | none | Current `.krypt` metadata (not secret). |
 | GET | `/trustees/pending-envelope` | Bearer | Poll for a pending recovery envelope. |
 | POST | `/trustees/shard-reply` | Bearer | Submit a wrapped shard. |
-| POST | `/admin/vault/create` | `X-Admin-Token` | Create the demo vault. |
-| GET | `/admin/vault/download` | `X-Admin-Token` | Download the created `.krypt` container's raw bytes. |
-| GET | `/admin/keycloak/group-members` | `X-Admin-Token` | List the 7 candidates. |
-| POST | `/admin/recovery/start` | `X-Admin-Token` | Arm a recovery session. |
-| POST | `/admin/recovery/finalize` | `X-Admin-Token` | Combine collected shards, decrypt. |
-| POST | `/admin/recovery/verify` | `X-Admin-Token` | Byte-for-byte compare recovered output against the original. |
+| POST | `/admin/vault/create` | Bearer (Keycloak, `shardic-operator` role) | Create the demo vault. |
+| GET | `/admin/vault/download` | Bearer (Keycloak, `shardic-operator` role) | Download the created `.krypt` container's raw bytes. |
+| GET | `/admin/keycloak/group-members` | Bearer (Keycloak, `shardic-operator` role) | List the 7 candidates. |
+| POST | `/admin/recovery/start` | Bearer (Keycloak, `shardic-operator` role) | Arm a recovery session. |
+| POST | `/admin/recovery/finalize` | Bearer (Keycloak, `shardic-operator` role) | Combine collected shards, decrypt. |
+| POST | `/admin/recovery/verify` | Bearer (Keycloak, `shardic-operator` role) | Byte-for-byte compare recovered output against the original. |
 | GET | `/events` | none | Server-Sent Events stream backing the live dashboard. |
 | GET | `/dashboard` | none | The live dashboard itself. |
 | GET | `/healthz` | none | Compose healthcheck target. |

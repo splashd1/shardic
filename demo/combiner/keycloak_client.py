@@ -1,12 +1,14 @@
 """
 keycloak_client.py
 
-Small HTTP helpers for the combiner's two Keycloak touchpoints:
-verifying a trustee's bearer token at registration time, and querying
-the Admin API (as the shardic-combiner-admin service account) for the
-shardic-trustees group's membership -- the "show the 7 candidates" demo
-step. Split out of app.py because three routes share this, not because
-it's a general-purpose Keycloak SDK.
+Small HTTP helpers for the combiner's three Keycloak touchpoints:
+verifying a bearer token (trustee at registration, operator on every
+/admin/* route), querying the Admin API (as the shardic-combiner-admin
+service account) for the shardic-trustees group's membership -- the
+"show the 7 candidates" demo step -- and, via that same service
+account, checking whether an authenticated caller holds the
+shardic-operator realm role. Split out of app.py because multiple
+routes share this, not because it's a general-purpose Keycloak SDK.
 
 Demo-only note: token verification here is a live call to Keycloak's
 userinfo endpoint (confirms the token is currently valid and gets the
@@ -60,6 +62,21 @@ def service_account_token(base_url: str, realm: str, client_id: str, client_secr
     if resp.status_code != 200:
         raise AuthError(f"service-account token request failed: HTTP {resp.status_code} {resp.text}")
     return resp.json()["access_token"]
+
+
+def user_has_realm_role(base_url: str, realm: str, admin_token: str, user_id: str, role_name: str) -> bool:
+    """Checks whether user_id -- the Keycloak internal user id, which is
+    the same value as the `sub` claim in that user's own tokens -- has
+    role_name mapped directly at the realm level. Uses the same Admin
+    API + service-account trust model as get_group_members() below,
+    rather than trusting role claims out of a client-supplied token
+    (which this module deliberately never decodes/verifies locally --
+    see the module docstring)."""
+    url = f"{base_url}/admin/realms/{realm}/users/{user_id}/role-mappings/realm"
+    resp = requests.get(url, headers={"Authorization": f"Bearer {admin_token}"}, timeout=_TIMEOUT_S)
+    if resp.status_code != 200:
+        raise AuthError(f"role-mapping lookup failed: HTTP {resp.status_code} {resp.text}")
+    return any(role.get("name") == role_name for role in resp.json())
 
 
 def get_group_members(base_url: str, realm: str, admin_token: str, group_name: str) -> list[dict]:

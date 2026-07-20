@@ -172,44 +172,73 @@ identity is actually the point.
 
 ## The operator role
 
-**Today**, every privileged action in `demo/combiner/app.py` — vault
-create, recovery start/finalize/verify, even Keycloak group-membership
-reads — is gated by one static shared bearer token
-(`COMBINER_ADMIN_TOKEN`, checked by `_require_admin()` at
-`demo/combiner/app.py:44,460-552`). There's no identity behind it and
-no audit trail: anyone holding the token can do anything, and the
-combiner can't distinguish one operator from another or record who did
-what.
+**Status: implemented** — `demo/combiner/app.py`'s `_require_operator()`,
+`demo/combiner/keycloak_client.py`'s `user_has_realm_role()`, and a
+`shardic-operator` realm role + dedicated `shardic-operator-client`
+OIDC client in `demo/keycloak/realm-export.json`. Verified end-to-end
+against the real demo stack: an operator token is accepted and audited
+by username, a valid-but-unauthorized trustee token is correctly
+rejected 403, and a missing token is rejected 401.
 
-**Proposed:** promote the operator to a real Keycloak-authenticated
-role, `shardic-operator`, in the same realm as the trustee directory
-but with its own OIDC client and its own
-`OPERATOR_OIDC_ISSUER`-style configuration — kept as a separately
-named setting from day one, even though it resolves to the same
-Keycloak URL as the trustee directory today. That's deliberate: the whole
-point of a distinct config knob is that splitting operators into their
-own realm later (a plausible real-world requirement — operators and
+**Before this**, every privileged action in `demo/combiner/app.py` —
+vault create, recovery start/finalize/verify, even Keycloak
+group-membership reads — was gated by one static shared bearer token
+(`COMBINER_ADMIN_TOKEN`). There was no identity behind it and no audit
+trail: anyone holding the token could do anything, and the combiner
+couldn't distinguish one operator from another or record who did what.
+
+**What was built:** the operator is promoted to a real
+Keycloak-authenticated role, `shardic-operator`, in the same realm as
+the trustee directory but with its own OIDC client
+(`shardic-operator-client`) and its own `OPERATOR_OIDC_ISSUER`/
+`OPERATOR_REALM` env vars — kept as separately named settings from day
+one, even though they resolve to the same Keycloak URL/realm as the
+trustee directory today. That's deliberate: the whole point of a
+distinct config knob is that splitting operators into their own
+realm later (a plausible real-world requirement — operators and
 trustees are different trust roles) becomes a config change, not a
 re-architecture. Authorization is by role claim (`shardic-operator`
-membership), not by realm identity alone — the same pattern this doc
-already uses to scope trustee selection to a dedicated group rather
-than "everyone with an SSO account" (see
+membership), checked via the Admin API using the combiner's own
+existing service-account credential (the same trust model already
+used for `get_group_members()` — see
+[keycloak_client.py's module docstring](../demo/combiner/keycloak_client.py)
+for why role claims are never trusted directly out of the caller's own
+token). This is the same "scope by group/role, not by bare realm
+identity" pattern this doc already uses for trustee selection (see
 ["Trustee selection via the Keycloak Admin
 API"](#trustee-selection-via-the-keycloak-admin-api) above).
 
-### Separation of duties is enforced, not just policy
+**A real environmental gotcha surfaced and fixed during verification:**
+Keycloak's `start-dev` mode derives the token issuer from whichever
+hostname a request arrives on by default — a token an operator fetches
+via `localhost:8080` (from the host, the natural thing for a human to
+do) got a different `iss` claim than what the combiner computed
+verifying it via `keycloak:8080` (the container-internal address),
+causing every operator request to fail userinfo verification with a
+401 that had nothing to do with authorization. Trustee auth never hit
+this because trustees fetch and present their own tokens entirely
+within the container network. Fixed by pinning `KC_HOSTNAME` to a
+single fixed value in `demo/docker-compose.yml` so the issuer no
+longer varies by request path — worth remembering for any future
+route that, like this one, is the first to have a human (not a
+container) as the token-fetching party.
 
-An operator can never self-select as one of the T selected trustees (primaries or
-backups) for a ceremony they themselves initiate. This needs an
-explicit identity check — comparing the operator's authenticated `sub`
-against every candidate `sub` at selection time — not a UI convention
-that a well-behaved operator happens to follow. The check runs at
-ceremony-initiation time and applies across the **entire backup list**,
-not just the initial T primaries — a backup-list gap is just as
-exploitable as a primary-list one. See
-[ceremony-formation.md](ceremony-formation.md#the-operator-role) for
-where this check fits into the full ceremony-initiation flow (T/D
-selection, primaries + ordered backup list, automatic backfill).
+### Separation of duties: still unimplemented, not just unenforced
+
+The design still calls for an operator who can never self-select as
+one of the T selected trustees (primaries or backups) for a ceremony
+they themselves initiate — an explicit identity check comparing the
+operator's authenticated `sub` against every candidate `sub` at
+selection time, not a UI convention that a well-behaved operator
+happens to follow. **This isn't built, and can't be yet**: it depends
+on [ceremony-formation.md](ceremony-formation.md#the-operator-role)'s
+T/D selection step (primaries + ordered backup list, automatic
+backfill), which doesn't exist in code — today's `/admin/vault/create`
+still just uses all 5 already-registered trustees, with no selection
+step to check self-exclusion against. What's implemented today is
+identity and role authorization only (above); separation of duties is
+the next real dependency once ceremony formation itself gets built,
+not a gap in what's implemented so far.
 
 ## New threat-model considerations
 

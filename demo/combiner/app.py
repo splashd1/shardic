@@ -12,8 +12,8 @@ sees a plaintext codeword or a raw trustee_N.txt file survive past
 vault creation, and never needs one at recovery time either.
 
 See demo/README.md for the full walkthrough and the list of deliberate
-demo-only simplifications (Direct Access Grant auth, static admin
-token, realm-wide Admin API scope, etc.).
+demo-only simplifications (Direct Access Grant auth, realm-wide Admin
+API scope, etc.).
 """
 
 import base64
@@ -42,7 +42,14 @@ KEYCLOAK_URL = os.environ["KEYCLOAK_URL"]
 KEYCLOAK_REALM = os.environ["KEYCLOAK_REALM"]
 ADMIN_CLIENT_ID = os.environ["ADMIN_CLIENT_ID"]
 ADMIN_CLIENT_SECRET = os.environ["ADMIN_CLIENT_SECRET"]
-COMBINER_ADMIN_TOKEN = os.environ["COMBINER_ADMIN_TOKEN"]
+# Separately-named from KEYCLOAK_URL/KEYCLOAK_REALM on purpose, even
+# though the demo points both at the same Keycloak instance -- see
+# docs/keycloak-credential-lookup.md#the-operator-role. A future split
+# to a dedicated operator realm/IdP is then a config change here, not
+# a rewrite of _require_operator() below.
+OPERATOR_OIDC_ISSUER = os.environ["OPERATOR_OIDC_ISSUER"]
+OPERATOR_REALM = os.environ["OPERATOR_REALM"]
+OPERATOR_ROLE = "shardic-operator"
 SAMPLE_SECRET_PATH = os.environ.get("SAMPLE_SECRET_PATH", "/data/sample-secret")
 VAULT_OUTDIR = os.environ.get("VAULT_OUTDIR", "/data/vault")
 RECOVERED_OUTDIR = os.environ.get("RECOVERED_OUTDIR", "/data/recovered")
@@ -486,9 +493,23 @@ def _bearer_token() -> str:
     return auth[len("Bearer "):]
 
 
-def _require_admin() -> None:
-    if request.headers.get("X-Admin-Token") != COMBINER_ADMIN_TOKEN:
-        raise CombinerError("missing or invalid X-Admin-Token", status_code=401)
+def _require_operator() -> str:
+    """Verifies the caller holds a live Keycloak session AND has been
+    granted the shardic-operator realm role -- replaces the old static
+    X-Admin-Token shared secret with a real authenticated, auditable
+    identity behind every /admin/* action (see
+    docs/keycloak-credential-lookup.md#the-operator-role). Role
+    membership is checked via the Admin API using the combiner's own
+    service-account credential (the same trust model already used by
+    get_group_members()), not by trusting claims out of the caller's
+    own token -- see keycloak_client.py's module docstring. Returns the
+    operator's username so callers can log who actually took the
+    action."""
+    sub, username = keycloak_client.get_verified_identity(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, _bearer_token())
+    admin_token = keycloak_client.service_account_token(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET)
+    if not keycloak_client.user_has_realm_role(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, admin_token, sub, OPERATOR_ROLE):
+        raise CombinerError(f"caller does not hold the {OPERATOR_ROLE} role", status_code=403)
+    return username
 
 
 def _sub_from_bearer() -> str:
@@ -555,16 +576,18 @@ def trustees_shard_reply():
 
 @app.route("/admin/vault/create", methods=["POST"])
 def admin_vault_create():
-    _require_admin()
+    operator = _require_operator()
     result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR)
+    print(f"vault created by operator {operator}")
     return jsonify(result)
 
 
 @app.route("/admin/vault/download", methods=["GET"])
 def admin_vault_download():
-    _require_admin()
+    operator = _require_operator()
     krypt_bytes = get_vault_krypt_bytes()
     vault_id = STATE["vault"]["vault_id"]
+    print(f"vault {vault_id} downloaded by operator {operator}")
     return Response(
         krypt_bytes,
         mimetype="application/octet-stream",
@@ -574,7 +597,7 @@ def admin_vault_download():
 
 @app.route("/admin/keycloak/group-members", methods=["GET"])
 def admin_group_members():
-    _require_admin()
+    _require_operator()
     token = keycloak_client.service_account_token(KEYCLOAK_URL, KEYCLOAK_REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET)
     members = keycloak_client.get_group_members(KEYCLOAK_URL, KEYCLOAK_REALM, token, "shardic-trustees")
     return jsonify([{"username": m["username"], "id": m["id"]} for m in members])
@@ -582,22 +605,25 @@ def admin_group_members():
 
 @app.route("/admin/recovery/start", methods=["POST"])
 def admin_recovery_start():
-    _require_admin()
+    operator = _require_operator()
     session_id = start_recovery_session()
+    print(f"recovery session {session_id} started by operator {operator}")
     return jsonify({"session_id": session_id})
 
 
 @app.route("/admin/recovery/finalize", methods=["POST"])
 def admin_recovery_finalize():
-    _require_admin()
+    operator = _require_operator()
     result = finalize_recovery(RECOVERED_OUTDIR)
+    print(f"recovery finalized by operator {operator}")
     return jsonify(result)
 
 
 @app.route("/admin/recovery/verify", methods=["POST"])
 def admin_recovery_verify():
-    _require_admin()
+    operator = _require_operator()
     result = verify_recovery()
+    print(f"recovery verify requested by operator {operator}: match={result['match']}")
     return jsonify(result)
 
 

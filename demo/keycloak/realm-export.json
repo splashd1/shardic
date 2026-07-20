@@ -3,6 +3,11 @@
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {"name": "shardic-operator"}
+    ]
+  },
   "groups": [
     {
       "name": "shardic-trustees"
@@ -86,6 +91,16 @@
       "clientRoles": {
         "realm-management": ["view-users"]
       }
+    },
+    {
+      "username": "operator",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "operator@example.invalid",
+      "firstName": "Demo",
+      "lastName": "Operator",
+      "credentials": [{"type": "password", "value": "operator-demo-pw1", "temporary": false}],
+      "realmRoles": ["shardic-operator"]
     }
   ],
   "clients": [
@@ -110,6 +125,17 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "secret": "combiner-admin-demo-secret1",
+      "redirectUris": []
+    },
+    {
+      "clientId": "shardic-operator-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
       "redirectUris": []
     }
   ]

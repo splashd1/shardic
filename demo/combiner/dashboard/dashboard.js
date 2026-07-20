@@ -341,12 +341,12 @@
 
   // ------------------------------------------------------------- controls
 
-  function adminToken() {
+  function operatorToken() {
     return $("admin-token").value;
   }
 
   async function callAdmin(path) {
-    const res = await fetch(path, { method: "POST", headers: { "X-Admin-Token": adminToken() } });
+    const res = await fetch(path, { method: "POST", headers: { "Authorization": `Bearer ${operatorToken()}` } });
     let body = {};
     try { body = await res.json(); } catch (_e) { /* no body */ }
     if (!res.ok) {
@@ -356,9 +356,9 @@
     return body;
   }
 
-  $("admin-token").value = localStorage.getItem("shardic_admin_token") || "";
+  $("admin-token").value = localStorage.getItem("shardic_operator_token") || "";
   $("admin-token").addEventListener("input", (e) => {
-    localStorage.setItem("shardic_admin_token", e.target.value);
+    localStorage.setItem("shardic_operator_token", e.target.value);
   });
 
   $("btn-create-vault").addEventListener("click", () => callAdmin("/admin/vault/create"));

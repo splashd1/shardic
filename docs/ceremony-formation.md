@@ -54,17 +54,18 @@ today" is reached.
 Ceremony initiation requires an authenticated `shardic-operator` — see
 [keycloak-credential-lookup.md's "The operator role"
 section](keycloak-credential-lookup.md#the-operator-role) for the full
-identity/authorization design (today's single shared bearer token vs.
-the proposed Keycloak-authenticated role, its own OIDC client config,
-and why). The one piece of that design that's load-bearing for this
-document specifically: **separation of duties is enforced, not just
-policy** — an operator can never self-select as one of the T selected
-trustees (primaries *or* backups) for a ceremony they themselves
-initiate. That
-check runs at ceremony-initiation time and applies across the
-**entire backup list**, not just the initial T primaries — see
-[automatic backfill](#automatic-backfill) below for why a backup-list
-gap is just as exploitable as a primary-list one.
+identity/authorization design. **The identity/role-authorization half
+of that is implemented** (`_require_operator()` in
+`demo/combiner/app.py`, verified against the real demo stack). **The
+piece that's load-bearing for this document specifically is not**:
+separation of duties — an operator can never self-select as one of the
+T selected trustees (primaries *or* backups) for a ceremony they
+themselves initiate — depends on this doc's own T/D selection step
+(below), which doesn't exist in code yet. Once it does, that check
+must run at ceremony-initiation time and apply across the **entire
+backup list**, not just the initial T primaries — see [automatic
+backfill](#automatic-backfill) below for why a backup-list gap would
+be just as exploitable as a primary-list one.
 
 ## Ceremony initiation
 
