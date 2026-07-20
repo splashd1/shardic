@@ -34,8 +34,11 @@ explicitly.
 | **Combiner** | The service holding ciphertext + wrapped envelopes; orchestrates registration/recovery; never sees a codeword. |
 | **Recovery session** | One combiner-tracked recovery attempt, identified by `session_id`. Ephemeral — doesn't survive a combiner restart. |
 | **`VaultStore`** | Pluggable backing store for the combiner's `.krypt` bytes, keyed by `vault_id`. `FilesystemVaultStore` (`demo/combiner/vault_store.py`) is the only backend shipped. |
-| **`shardic-operator`** | Keycloak realm role required for every `/admin/*` combiner route. Replaces the old shared `COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement is a separate, still-unbuilt piece. |
-| **Ceremony** | *(recommended, not yet settled — see below)* The umbrella term for the whole registration→verified-recovery arc. |
+| **`shardic-operator`** | Keycloak realm role required for every `/admin/*` combiner route. Replaces the old shared `COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement is implemented too. |
+| **Ceremony** | Settled term (see below) for the whole registration→verified-recovery arc, now a real route prefix (`/admin/ceremony/initiate`). |
+| **Candidate directory** | The org-wide set of registered trustees (`STATE["trustee_pubkeys"]`), before any ceremony selects from them. Not "pool" — collides with shardic-prime's pool trustee. |
+| **Ceremony formation** | Operator-initiated selection of T primaries + an ordered backup list, invitations, and automatic backfill on decline/timeout. Implemented, per `docs/ceremony-formation.md`. |
+| **Invitation** / **Backfill** | A per-trustee ceremony-formation slot record, and the race-safe promotion of the next backup into a lapsed slot. Both implemented. |
 
 **The one pair to never confuse:** *share = at rest, in the vault,
 pre-match. Shard = in motion, post-match, en route to the combiner.*
@@ -150,21 +153,46 @@ alternate implementation, per `docs/vault-storage-backend.md`.
 `_require_operator()`) — the authenticated role required for every
 `/admin/*` combiner route, replacing the old shared
 `COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement (an operator
-can't self-select as a ceremony trustee) is *not* implemented — it
-depends on `docs/ceremony-formation.md`'s still-unbuilt T-selection
-step, per that doc's own "operator role" section.
+can't self-select as a ceremony trustee) is also implemented —
+`initiate_ceremony()` checks the operator's `sub` against every
+primary and every name on the ordered backup list.
 
-**Ceremony** *(recommended, not yet settled)* — proposed as the
-standard umbrella term for the whole arc from trustee registration
-through a verified recovery. Not present in the original core codebase
-— it emerged organically in the live-dashboard and static-explainer
-work (`demo/combiner/dashboard/`, `docs/shardic-envelope-explainer.html`)
-and has already started spreading into demo code comments and
-`notes.md` without ever being formally defined. Worth adopting on
-purpose rather than leaving it to keep spreading by accident — English
-genuinely lacked a single word for "the whole lifecycle" before this.
-Flagged here as a recommendation pending explicit confirmation, not a
-fact about existing code the way the rest of this glossary is.
+**Ceremony** — the umbrella term for the whole arc from trustee
+registration through a verified recovery, including formation.
+**Settled**, no longer a bare recommendation: it emerged organically in
+the live-dashboard/static-explainer work before any code used the
+word, then landed for real in `/admin/ceremony/initiate`,
+`STATE["ceremony"]`, and several SSE event types
+(`ceremony_initiated`/`ceremony_formed`/`ceremony_failed`) — shipping
+in actual route paths is what settles a name.
+
+**Candidate directory** (implemented: `STATE["trustee_pubkeys"]`) — the
+org-wide set of registered trustees, before any specific ceremony
+selects from them. Deliberately *not* called "pool" — that word is
+already taken by the unrelated shardic-prime **pool trustee** concept
+(a per-vault `D − 1` group); reusing it here would collide.
+
+**Ceremony formation** (implemented in `demo/combiner/app.py`:
+`initiate_ceremony()`, `get_pending_invitation()`,
+`respond_to_invitation()`, `_ceremony_scan_loop()`) — the
+operator-initiated process of selecting T primaries + an ordered
+backup list, issuing invitations, and handling decline/timeout via
+automatic backfill, per `docs/ceremony-formation.md`. A ceremony is
+`formed` once every slot is `accepted`, or `failed` if the backup list
+runs out before that happens.
+
+**Invitation** (implemented) — a per-trustee ceremony-formation slot
+record (`{role, sub, status, invited_at}`), discovered by polling
+`GET /trustees/pending-invitation` and responded to via
+`POST /trustees/invitation-response`. Never triggers a fresh keypair —
+distinct from *registration* (directory-side, self-service, once).
+
+**Backfill** (implemented) — automatic promotion of the next-ranked
+candidate on a ceremony's ordered backup list into a lapsed slot,
+inheriting that slot's role (prime or pool). Race-safe:
+`respond_to_invitation()` only accepts a response from the slot's
+*current* occupant, so a late accept from an already-backfilled
+primary gets a 409, not a double-fill.
 
 ### Proposed-but-not-implemented vocabulary
 
@@ -178,27 +206,11 @@ doesn't assume they're live:
   shape backing `CredentialLookup`.
 - **`EnvelopeDropPoint`** (`Protocol`, `docs/envelope-delivery.md`) —
   pull-based, single-read delivery point for a wrapped envelope.
-- **Candidate directory** (`docs/keycloak-credential-lookup.md`,
-  `docs/ceremony-formation.md`) — the org-wide set of trustees who have
-  completed registration, before any specific ceremony selects from
-  them. Deliberately *not* called "pool" — that word is already taken
-  by the unrelated shardic-prime **pool trustee** concept (a per-vault
-  D−1 group); reusing it here would collide.
-- **Invitation** (`docs/ceremony-formation.md`) — an ephemeral,
-  per-trustee message issued at ceremony-initiation time, naming which
-  combiner instance is running *this* ceremony and carrying a TTL and a
-  fresh liveness/proof-of-possession check. Distinct from
-  *registration* (directory-side, self-service, once) — an invitation
-  never triggers a fresh keypair.
-- **Backfill** (`docs/ceremony-formation.md`) — automatic promotion of
-  the next-ranked candidate on a ceremony's ordered backup list into a
-  primary's slot, triggered the moment that slot lapses (decline or TTL
-  timeout). Requires race-safe slot-closing (first valid acceptance
-  wins).
 - **`NotificationChannel`** (`Protocol`, `docs/notification-channels.md`)
   — pluggable, admin-configurable delivery of a non-secret prompt;
-  shared by ceremony invites, envelope-ready pings, and drop-expired
-  alerts.
+  would be shared by ceremony invites, envelope-ready pings, and
+  drop-expired alerts. The v1.0 ceremony-formation implementation uses
+  plain polling instead, pending this.
 
 ## Lifecycle-state adjectives
 
@@ -244,6 +256,17 @@ string, don't invent a synonym for it.
 - `pending` matches the real route name (`/trustees/pending-envelope`)
   for "wrapped and available for a trustee to fetch."
 - `opened`: the receiving party has unwrapped it locally.
+
+**Ceremony**: `forming` → `formed` | `failed`
+- Real values in `STATE["ceremony"]["status"]`. `formed`: every slot
+  `accepted`, vault creation unlocked. `failed`: backup list exhausted
+  before every slot could be filled.
+
+**Invitation slot**: `invited` → `accepted` | `open`
+- Real values in each slot's `status`. `open` is the lapsed-with-
+  no-backup-left terminal state (implies the ceremony is `failed`); a
+  lapsed slot with a backup available goes straight back to `invited`
+  (backfilled) rather than passing through `open`.
 
 ## Applying this
 

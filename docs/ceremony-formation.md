@@ -1,16 +1,23 @@
-# Ceremony formation: operator-initiated invitations, decline handling, and automatic backfill (proposed, unimplemented)
+# Ceremony formation: operator-initiated invitations, decline handling, and automatic backfill (implemented, v1.0)
 
-**Status: design proposal.** Nothing described here exists in the
-codebase yet. This document covers the gap between two things that
-already have designs: directory **registration** (once, ahead of any
-ceremony — see
+**Status: implemented and verified end-to-end** against the real demo
+stack (`demo/combiner/app.py`'s `initiate_ceremony()`,
+`get_pending_invitation()`, `respond_to_invitation()`,
+`_ceremony_scan_loop()`, plus matching trustee-side polling in
+`demo/trustee/app.py`). This document covers the gap between two
+things that already had designs: directory **registration** (once,
+ahead of any ceremony — see
 [keycloak-credential-lookup.md](keycloak-credential-lookup.md)) and
 ceremony **execution** (registration → vault-create → wrap →
 recovery, already implemented in `demo/`). It answers: given a
 directory of registered candidates, how does one specific ceremony
 actually get formed — who's invited, what happens when someone
 declines or never answers, and how does the operator role that
-initiates all of this get authenticated and constrained?
+initiates all of this get authenticated and constrained? Several
+concrete choices below (TTL default, no separate ceremony-level
+timeout, backup-list-exhaustion behavior) were left open in the
+original design and settled during implementation — each is marked
+**(v1.0 decision)** where it's resolved.
 
 > **Note on terminology:** this doc deliberately says "candidate
 > directory," never "pool," for the org-wide set of registered
@@ -54,42 +61,56 @@ today" is reached.
 Ceremony initiation requires an authenticated `shardic-operator` — see
 [keycloak-credential-lookup.md's "The operator role"
 section](keycloak-credential-lookup.md#the-operator-role) for the full
-identity/authorization design. **The identity/role-authorization half
-of that is implemented** (`_require_operator()` in
-`demo/combiner/app.py`, verified against the real demo stack). **The
-piece that's load-bearing for this document specifically is not**:
-separation of duties — an operator can never self-select as one of the
-T selected trustees (primaries *or* backups) for a ceremony they
-themselves initiate — depends on this doc's own T/D selection step
-(below), which doesn't exist in code yet. Once it does, that check
-must run at ceremony-initiation time and apply across the **entire
-backup list**, not just the initial T primaries — see [automatic
+identity/authorization design (`_require_operator()` in
+`demo/combiner/app.py`). **Separation of duties is implemented and
+verified**: an operator can never self-select as one of the T selected
+trustees (primaries *or* backups) for a ceremony they themselves
+initiate — `initiate_ceremony()` checks the operator's `sub` against
+every primary *and* every name on the ordered backup list at
+initiation time, not just the initial T. See [automatic
 backfill](#automatic-backfill) below for why a backup-list gap would
 be just as exploitable as a primary-list one.
 
 ## Ceremony initiation
 
-An operator authenticated as above initiates a ceremony by specifying:
+An operator authenticated as above initiates a ceremony via
+`POST /admin/ceremony/initiate`, specifying:
 
-- **Vault contents** (what's being protected).
-- **T/D**, including a designated Prime-T if the ceremony is
-  shardic-prime.
-- **T primaries + an ordered backup list**, selected from the
-  registered candidate directory.
+- **Threshold D** (`threshold_d`).
+- **Prime + pool primaries** (`prime`, `pool`) — together, T primaries.
+  Vault contents are fixed per-demo (`SAMPLE_SECRET_PATH`), not
+  operator-specified; a real deployment would add that as a parameter
+  here.
+- **An ordered backup list** (`backups`), selected from the registered
+  candidate directory.
 
-This is a new administrative event — it doesn't exist in the demo
-today, where trustee containers are simply started and register
-themselves with no ceremony-formation step in between.
+`initiate_ceremony()` (`demo/combiner/app.py`) validates: `2 <=
+threshold_d <= trustees_t`, every named username is distinct and
+already a registered candidate, and separation of duties (below) —
+before creating any invitation. This replaced a previous demo behavior
+where trustee containers simply started and registered with no
+formation step in between; `/admin/vault/create` now refuses to run
+without a **formed** ceremony.
 
 ## Ephemeral per-trustee invitations
 
 Each selected candidate (primary or, later, backfilled backup) gets an
-ephemeral, per-trustee invitation. An invitation carries:
+ephemeral, per-trustee invitation — a slot record
+(`{role, sub, status, invited_at}`) the trustee discovers by polling
+`GET /trustees/pending-invitation` and responds to via
+`POST /trustees/invitation-response`, both Bearer-authenticated. An
+invitation carries:
 
 - Which combiner/vault-holder instance to talk to for **this specific
-  ceremony**.
-- A TTL.
-- A fresh liveness/proof-of-possession check.
+  ceremony** — in the demo, trivially the one combiner instance every
+  trustee already talks to; a multi-combiner deployment would need the
+  invitation to actually name one.
+- A TTL (`CEREMONY_INVITE_TTL_S`, below).
+- A fresh liveness/proof-of-possession check — satisfied by the same
+  mechanism already used for registration and shard replies: every
+  call requires a currently-valid OIDC Bearer token, freshly fetched
+  each poll rather than a cached/refresh-token flow. No separate PoP
+  mechanism was needed.
 
 This resolves the discovery half of the open question
 `keycloak-credential-lookup.md` previously left unanswered: directory
@@ -109,9 +130,16 @@ for the registration-side half of this.
 ## Decline / no-response handling
 
 Decline and silent timeout are treated **identically** — both are just
-"non-acceptance" of a slot. There is no different code path for "I
-looked and said no" versus "I never responded"; both are governed by
-the invitation's TTL.
+"non-acceptance" of a slot, and both funnel through the same
+`_lapse_slot_locked()` helper. Decline (`POST
+/trustees/invitation-response` with `accept: false`) short-circuits
+immediately; silent non-response is caught by `_ceremony_scan_loop()`,
+a background thread (mirroring `_heartbeat_loop`'s existing shape)
+that sweeps every `CEREMONY_SCAN_INTERVAL_S` (2s) for slots past their
+TTL. **v1.0 decision:** `CEREMONY_INVITE_TTL_S` defaults to 20 seconds,
+configurable via env var — long enough to comfortably exceed a
+trustee's poll interval (3s default), short enough to demo without a
+long wait.
 
 ### Automatic backfill
 
@@ -121,22 +149,25 @@ is deliberately different from the already-solved live-participation
 problem (the dashboard's heartbeat/pause detection during an *active*
 recovery session) — formation-time non-acceptance and mid-recovery
 pausing are unrelated mechanisms that happen to both look like "a
-trustee isn't responding."
+trustee isn't responding." **v1.0 decision:** if the backup queue is
+exhausted before a lapsed slot can be refilled, the ceremony's status
+becomes `failed` outright (no partial-formation alert-and-wait state)
+— matches this project's general bias toward failing loudly over
+introducing a new intermediate state. A failed ceremony doesn't block
+initiating a fresh one.
 
 ### Implementation requirements this creates
 
-- **Slot-closing must be race-safe.** First valid acceptance for a
-  slot wins. A late acceptance arriving from a primary who has already
-  been backfilled must hit a dead link, not double-fill the slot or
-  silently swap the trustee back in after a backup has already started
-  participating.
+- **Slot-closing is race-safe**, verified live: `respond_to_invitation()`
+  only accepts a response if the slot's current occupant (`sub`) still
+  matches the caller *and* the slot is still `"invited"` — a late
+  accept from an already-backfilled primary finds no matching slot and
+  gets a 409, not a double-fill or a silent swap-back.
 - **The separation-of-duties check applies to the full backup list**,
-  not just the initial T primaries — an operator excluding themselves
-  from the visible primary list while leaving themselves reachable via
-  backfill would defeat the enforcement above. The `sub` comparison
-  must run against every name on the ordered backup list at
-  initiation time, not re-checked lazily only when a name is actually
-  invited.
+  not just the initial T primaries — `initiate_ceremony()` checks the
+  operator's `sub` against every primary *and* every name on the
+  ordered backup list, all at initiation time, not re-checked lazily
+  only when a name is actually invited.
 
 ## Explicitly out of scope for this document
 
@@ -145,12 +176,19 @@ trustee isn't responding."
   `demo/combiner/app.py` and the dashboard; unrelated to
   formation-time decline/backfill.
 - **Invitation delivery channel mechanics** — resolved in
-  [notification-channels.md](notification-channels.md): invitations
-  are one of three event types delivered through a shared, pluggable,
-  admin-configurable `NotificationChannel` interface (alongside
-  envelope-delivery's trustee-facing ping and operator-facing
-  expiry alert). This doc only specifies *that* an invitation carries a
-  TTL and governs lapse/backfill (above) — not how it's transported.
+  [notification-channels.md](notification-channels.md), still
+  unimplemented itself. The v1.0 implementation here uses plain
+  polling (`GET /trustees/pending-invitation`), the same mechanism
+  already used for pending envelopes — adequate for a demo where every
+  trustee is a container that can poll, but not the pluggable,
+  admin-configurable channel that doc designs for a real deployment
+  where a human needs to be proactively notified.
+- **Dashboard visualization of ceremony formation** — the SSE event
+  types below are broadcast and logged in the dashboard's text panel,
+  and the "Create Vault" button correctly gates on ceremony status, but
+  no new visual diagram/UI was built for formation itself (the
+  hub-and-spoke diagram still starts at vault creation). A reasonable
+  future addition, not required to call ceremony formation "done."
 - **Browser XSS residual risk and trustee private-key portability
   across devices** — resolved in
   [portable-trustee-client.md](portable-trustee-client.md).
@@ -159,23 +197,30 @@ trustee isn't responding."
   three are specific to ceremony formation, so they're designed
   separately rather than folded in here.
 
-## Open questions / TBD before real implementation
+## Design decisions settled during implementation (v1.0)
 
-- What happens when the **entire backup list is exhausted** without
-  filling T slots — does the ceremony fail outright, does the operator
-  get an alert to extend the backup list, or something else? Not
-  addressed yet.
-- Is there an overall **ceremony-formation timeout** distinct from each
-  individual invitation's TTL (e.g., "this ceremony must be fully
-  formed within 24 hours or it's abandoned"), or does formation run
-  open-ended as long as backups remain?
-- Concrete invitation TTL default(s) — not specified here, same
-  category of decision `notification-channel-concept.md` already
-  deferred for its own TTL question.
-- Whether backup-list ordering can be changed by the operator mid-
-  formation (e.g., after some invitations are already outstanding), or
-  is fixed at initiation time.
-- Audit/logging shape for ceremony-formation events (who was invited,
-  who declined, when backfill fired) — worth designing alongside the
-  operator-role work above, since one motivation for a real identity
-  behind privileged actions is having something to audit.
+The original design left five questions open; each got a concrete,
+documented answer rather than staying open indefinitely:
+
+- **Entire backup list exhausted before every slot fills** → the
+  ceremony's status becomes `failed` outright. No partial-formation
+  alert-and-wait state, no automatic operator notification (though the
+  failure is broadcast over SSE and logged) — matches this project's
+  bias toward failing loudly over adding a new intermediate state. A
+  failed ceremony doesn't block initiating a fresh one.
+- **Ceremony-formation-level timeout distinct from per-invitation TTL**
+  → not built. Formation runs until either every slot is `accepted`
+  (→ `formed`) or a lapse can't be backfilled (→ `failed`, above) — no
+  separate "abandon after N hours" timer layered on top.
+- **Concrete invitation TTL default** → `CEREMONY_INVITE_TTL_S`,
+  defaulting to 20 seconds, configurable via env var. Chosen to
+  comfortably exceed a trustee's poll interval (3s default) without
+  making a live demo wait long for a lapse to occur.
+- **Backup-list reordering mid-formation** → not supported. The backup
+  queue is fixed at initiation time; there's no route to edit it once
+  a ceremony is forming.
+- **Audit/logging shape** → the same `print()`-plus-SSE-`_broadcast()`
+  pattern already used everywhere else in the combiner, not a new
+  mechanism. Every state transition (`ceremony_initiated`,
+  `invitation_responded`, `invitation_expired`, `backfill_invited`,
+  `ceremony_formed`, `ceremony_failed`) is both logged and broadcast.

@@ -223,22 +223,19 @@ longer varies by request path — worth remembering for any future
 route that, like this one, is the first to have a human (not a
 container) as the token-fetching party.
 
-### Separation of duties: still unimplemented, not just unenforced
+### Separation of duties: implemented
 
-The design still calls for an operator who can never self-select as
-one of the T selected trustees (primaries or backups) for a ceremony
-they themselves initiate — an explicit identity check comparing the
-operator's authenticated `sub` against every candidate `sub` at
-selection time, not a UI convention that a well-behaved operator
-happens to follow. **This isn't built, and can't be yet**: it depends
-on [ceremony-formation.md](ceremony-formation.md#the-operator-role)'s
-T/D selection step (primaries + ordered backup list, automatic
-backfill), which doesn't exist in code — today's `/admin/vault/create`
-still just uses all 5 already-registered trustees, with no selection
-step to check self-exclusion against. What's implemented today is
-identity and role authorization only (above); separation of duties is
-the next real dependency once ceremony formation itself gets built,
-not a gap in what's implemented so far.
+An operator can never self-select as one of the T selected trustees
+(primaries or backups) for a ceremony they themselves initiate —
+`initiate_ceremony()` in `demo/combiner/app.py` compares the operator's
+authenticated `sub` against every named primary *and* every name on the
+ordered backup list, not just the initial T, before a ceremony is
+allowed to form. Verified live: an operator attempting to name
+themselves anywhere in either list gets a 403, not a silent
+acceptance. This was blocked on
+[ceremony-formation.md](ceremony-formation.md#the-operator-role)'s T/D
+selection step, which is now implemented — see that doc for the full
+ceremony-formation design this check is part of.
 
 ## New threat-model considerations
 

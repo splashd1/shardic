@@ -53,10 +53,15 @@ OPERATOR_ROLE = "shardic-operator"
 SAMPLE_SECRET_PATH = os.environ.get("SAMPLE_SECRET_PATH", "/data/sample-secret")
 VAULT_OUTDIR = os.environ.get("VAULT_OUTDIR", "/data/vault")
 RECOVERED_OUTDIR = os.environ.get("RECOVERED_OUTDIR", "/data/recovered")
-TRUSTEES_REQUIRED = 5
-THRESHOLD = 3
 HEARTBEAT_TIMEOUT_S = float(os.environ.get("HEARTBEAT_TIMEOUT_S", "10"))
 HEARTBEAT_SCAN_INTERVAL_S = 2
+# T/D are no longer fixed demo constants -- docs/ceremony-formation.md's
+# whole point is that an operator specifies them per ceremony. See
+# CEREMONY_INVITE_TTL_S: an invitation lapses (decline and timeout are
+# treated identically) after this many seconds, at which point the
+# ceremony scan loop backfills it from the ordered backup list.
+CEREMONY_INVITE_TTL_S = float(os.environ.get("CEREMONY_INVITE_TTL_S", "20"))
+CEREMONY_SCAN_INTERVAL_S = 2
 
 app = Flask(__name__)
 _lock = threading.Lock()
@@ -102,6 +107,8 @@ def _new_state():
         "trustee_last_seen": {},   # sub -> time.time() of last authenticated request -- in-memory only
         "trustee_status": {},      # sub -> "live" | "paused" -- in-memory only, derived by _heartbeat_loop
         "last_verify": None,       # {"match": bool} -- in-memory only, set by /admin/recovery/verify
+        "ceremony": None,          # in-memory only, same "cheap to re-arm" reasoning as
+                                    # recovery_session -- see initiate_ceremony() for the shape
     }
 
 
@@ -181,29 +188,212 @@ def do_register_trustee(bearer_token: str, public_key_b64: str, algorithm: str) 
     return {"trustee_id": sub, "username": username, "fingerprint": fp}
 
 
+def _slot_role(index: int) -> str:
+    """Slot 0 is always the mandatory prime; every other slot is pool.
+    Role is a property of the *slot*, not the person occupying it --
+    whoever backfills a lapsed slot inherits that slot's role."""
+    return "prime" if index == 0 else "pool"
+
+
+def initiate_ceremony(
+    operator_sub: str,
+    threshold_d: int,
+    prime_username: str,
+    pool_usernames: list[str],
+    backup_usernames: list[str],
+) -> dict:
+    with _lock:
+        if STATE["vault"] is not None:
+            raise CombinerError("a vault already exists for this demo run", status_code=409)
+        if STATE["ceremony"] is not None and STATE["ceremony"]["status"] == "forming":
+            raise CombinerError("a ceremony is already forming", status_code=409)
+
+        trustees_t = 1 + len(pool_usernames)
+        if threshold_d < 2:
+            raise CombinerError("threshold_d must be >= 2: 1 mandatory prime + >= 1 pool", status_code=400)
+        if trustees_t < 2:
+            raise CombinerError("need at least 1 pool trustee alongside the prime", status_code=400)
+        if threshold_d > trustees_t:
+            raise CombinerError("threshold_d cannot exceed trustees_t", status_code=400)
+
+        primary_usernames = [prime_username] + list(pool_usernames)
+        all_named = primary_usernames + list(backup_usernames)
+        if len(set(all_named)) != len(all_named):
+            raise CombinerError("primaries and backups must all be distinct", status_code=400)
+
+        username_to_sub = {rec["username"]: sub for sub, rec in STATE["trustee_pubkeys"].items()}
+        missing = [u for u in all_named if u not in username_to_sub]
+        if missing:
+            raise CombinerError(f"not registered candidates: {missing}", status_code=400)
+
+        # Separation of duties: checked against the *entire* backup
+        # list, not just the primaries -- an operator excluding
+        # themselves from the visible primary list while remaining
+        # reachable via backfill would defeat this. See
+        # docs/ceremony-formation.md#implementation-requirements-this-creates.
+        if operator_sub in (username_to_sub[u] for u in all_named):
+            raise CombinerError(
+                "operator cannot appear as a primary or backup trustee for a ceremony they initiate",
+                status_code=403,
+            )
+
+        now = time.time()
+        slots = [
+            {"role": _slot_role(i), "sub": username_to_sub[u], "status": "invited", "invited_at": now}
+            for i, u in enumerate(primary_usernames)
+        ]
+        backup_queue = [username_to_sub[u] for u in backup_usernames]
+
+        ceremony_id = str(uuid.uuid4())
+        STATE["ceremony"] = {
+            "ceremony_id": ceremony_id,
+            "operator_sub": operator_sub,
+            "threshold_d": threshold_d,
+            "trustees_t": trustees_t,
+            "slots": slots,
+            "backup_queue": backup_queue,
+            "status": "forming",
+        }
+        response = {
+            "ceremony_id": ceremony_id,
+            "invited": [{"role": s["role"], "username": STATE["trustee_pubkeys"][s["sub"]]["username"]} for s in slots],
+            "backup_queue": [STATE["trustee_pubkeys"][sub]["username"] for sub in backup_queue],
+        }
+    _broadcast("ceremony_initiated", response)
+    return response
+
+
+def get_pending_invitation(sub: str) -> dict | None:
+    with _lock:
+        STATE["trustee_last_seen"][sub] = time.time()
+        ceremony = STATE["ceremony"]
+        if ceremony is None or ceremony["status"] != "forming":
+            return None
+        for slot in ceremony["slots"]:
+            if slot["sub"] == sub and slot["status"] == "invited":
+                return {
+                    "ceremony_id": ceremony["ceremony_id"],
+                    "role": slot["role"],
+                    "ttl_expires_at": slot["invited_at"] + CEREMONY_INVITE_TTL_S,
+                }
+        return None
+
+
+def _lapse_slot_locked(slot: dict) -> tuple[str, dict]:
+    """Caller must hold _lock. Marks slot open and immediately tries to
+    backfill it from the shared, ordered backup queue -- decline
+    short-circuits the wait; the ceremony scan loop reaches the same
+    call once the TTL elapses. Both funnel through here, matching
+    "decline and timeout are just non-acceptance" from
+    docs/ceremony-formation.md#decline--no-response-handling. Returns
+    the (event_type, event_data) to broadcast once _lock is released."""
+    ceremony = STATE["ceremony"]
+    if not ceremony["backup_queue"]:
+        slot["status"] = "open"
+        ceremony["status"] = "failed"
+        print(f"ceremony {ceremony['ceremony_id']} failed: backup list exhausted, "
+              f"no candidate left to fill the {slot['role']} slot")
+        return ("ceremony_failed", {"ceremony_id": ceremony["ceremony_id"]})
+    next_sub = ceremony["backup_queue"].pop(0)
+    slot["sub"] = next_sub
+    slot["status"] = "invited"
+    slot["invited_at"] = time.time()
+    username = STATE["trustee_pubkeys"][next_sub]["username"]
+    print(f"ceremony {ceremony['ceremony_id']}: backfilled {slot['role']} slot with {username}")
+    return ("backfill_invited", {"ceremony_id": ceremony["ceremony_id"], "role": slot["role"], "username": username})
+
+
+def _maybe_finalize_formation_locked() -> tuple[str, dict] | None:
+    """Caller must hold _lock."""
+    ceremony = STATE["ceremony"]
+    if all(s["status"] == "accepted" for s in ceremony["slots"]):
+        ceremony["status"] = "formed"
+        print(f"ceremony {ceremony['ceremony_id']} formed -- ready for vault creation")
+        return ("ceremony_formed", {"ceremony_id": ceremony["ceremony_id"]})
+    return None
+
+
+def respond_to_invitation(sub: str, ceremony_id: str, accept: bool) -> dict:
+    events = []
+    with _lock:
+        STATE["trustee_last_seen"][sub] = time.time()
+        ceremony = STATE["ceremony"]
+        if ceremony is None or ceremony["ceremony_id"] != ceremony_id or ceremony["status"] != "forming":
+            raise CombinerError("no forming ceremony with that ceremony_id", status_code=409)
+        slot = next((s for s in ceremony["slots"] if s["sub"] == sub and s["status"] == "invited"), None)
+        if slot is None:
+            # Race-safety: first valid acceptance wins. A late accept
+            # from a slot that's already lapsed (declined, expired, or
+            # already backfilled to someone else) lands here -- a dead
+            # link, not a silent no-op or a slot double-fill. See
+            # docs/ceremony-formation.md#implementation-requirements-this-creates.
+            raise CombinerError("no pending invitation for this trustee -- it may have already lapsed", status_code=409)
+
+        username = STATE["trustee_pubkeys"][sub]["username"]
+        if accept:
+            slot["status"] = "accepted"
+            print(f"{username} accepted their {slot['role']} invitation for ceremony {ceremony_id}")
+            evt = _maybe_finalize_formation_locked()
+            if evt is not None:
+                events.append(evt)
+        else:
+            print(f"{username} declined their {slot['role']} invitation for ceremony {ceremony_id}")
+            events.append(_lapse_slot_locked(slot))
+        events.append(("invitation_responded", {"ceremony_id": ceremony_id, "role": slot["role"], "accept": accept}))
+        result = {"status": slot["status"]}
+
+    for evt_type, evt_data in events:
+        _broadcast(evt_type, evt_data)
+    return result
+
+
+def _ceremony_scan_loop() -> None:
+    """Background daemon thread, mirroring _heartbeat_loop's shape:
+    periodically sweep for invitations past their TTL and lapse them.
+    Decline reaches _lapse_slot_locked() immediately via
+    respond_to_invitation(); this loop is what catches silent
+    non-response."""
+    while True:
+        time.sleep(CEREMONY_SCAN_INTERVAL_S)
+        events = []
+        with _lock:
+            ceremony = STATE["ceremony"]
+            if ceremony is not None and ceremony["status"] == "forming":
+                now = time.time()
+                for slot in ceremony["slots"]:
+                    if slot["status"] == "invited" and (now - slot["invited_at"]) > CEREMONY_INVITE_TTL_S:
+                        username = STATE["trustee_pubkeys"][slot["sub"]]["username"]
+                        role = slot["role"]
+                        print(f"ceremony {ceremony['ceremony_id']}: {role} invitation to {username} expired")
+                        events.append(("invitation_expired", {"ceremony_id": ceremony["ceremony_id"], "role": role, "username": username}))
+                        events.append(_lapse_slot_locked(slot))
+        for evt_type, evt_data in events:
+            _broadcast(evt_type, evt_data)
+
+
 def do_create_vault(input_path: str, outdir: str) -> dict:
     with _lock:
         if STATE["vault"] is not None:
             raise CombinerError("a vault already exists for this demo run", status_code=409)
-        if len(STATE["trustee_pubkeys"]) != TRUSTEES_REQUIRED:
-            have = sorted(rec["username"] for rec in STATE["trustee_pubkeys"].values())
+        ceremony = STATE["ceremony"]
+        if ceremony is None or ceremony["status"] != "formed":
             raise CombinerError(
-                f"need exactly {TRUSTEES_REQUIRED} registered trustees, have {len(have)}: {have}",
+                "no formed ceremony -- initiate one via /admin/ceremony/initiate "
+                "and wait for every slot to be accepted",
                 status_code=409,
             )
 
-        # Deterministic slot assignment: alphabetically-first username is
-        # the prime trustee, the remaining 4 are the pool -- matches the
-        # fixed alice..erin container names so the demo README can name
-        # specific containers to pause with certainty.
-        ordered = sorted(STATE["trustee_pubkeys"].items(), key=lambda kv: kv[1]["username"])
-        prime_sub, _prime_rec = ordered[0]
-        pool_assignments = ordered[1:]  # 4 (sub, rec) entries, still username-sorted
+        prime_slot = next(s for s in ceremony["slots"] if s["role"] == "prime")
+        pool_slots = [s for s in ceremony["slots"] if s["role"] == "pool"]
+        prime_sub = prime_slot["sub"]
+        pool_subs = [s["sub"] for s in pool_slots]
+        trustees_t = ceremony["trustees_t"]
+        threshold_d = ceremony["threshold_d"]
 
         result = vault_core_prime.create_vault_prime(
             input_path=input_path,
-            trustees=TRUSTEES_REQUIRED,
-            threshold=THRESHOLD,
+            trustees=trustees_t,
+            threshold=threshold_d,
             word_length=None,
             word_count=1,
             kdf_method="pbkdf2",
@@ -212,12 +402,12 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
         )
 
         trustee_files = result["trustee_files"]
-        assert len(trustee_files) == TRUSTEES_REQUIRED
+        assert len(trustee_files) == trustees_t
         pool_files = sorted(f for f in trustee_files if f != result["prime_trustee_file"])
-        assert len(pool_files) == len(pool_assignments) == TRUSTEES_REQUIRED - 1
+        assert len(pool_files) == len(pool_subs) == trustees_t - 1
 
         assignment = [(prime_sub, result["prime_trustee_file"])]
-        assignment.extend((sub, pool_file) for (sub, _rec), pool_file in zip(pool_assignments, pool_files))
+        assignment.extend(zip(pool_subs, pool_files))
 
         envelopes = {}
         for sub, trustee_file_path in assignment:
@@ -254,23 +444,24 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
         STATE["codeword_envelopes"] = envelopes
         STATE["vault"] = {"vault_id": vault_id, "metadata": metadata, "ciphertext": ciphertext}
         # Recorded once, here, rather than re-derived later from
-        # trustee_pubkeys -- if a `candidates`-profile trustee (frank/grace)
-        # registers *after* this vault already exists, re-sorting all
-        # currently-known usernames at snapshot/query time would silently
-        # relabel who's "prime", even though the actual wrapped envelopes
-        # (and do_create_vault's own alphabetical-at-the-time choice above)
-        # never change.
+        # trustee_pubkeys -- the ceremony's finalized slot assignment
+        # (including any backfills) is the source of truth for who's
+        # prime/pool, not a re-sort of whoever happens to be registered
+        # by the time something queries it.
         STATE["vault_assignment"] = {
             "prime_sub": prime_sub,
-            "pool_subs": [sub for sub, _rec in pool_assignments],
+            "pool_subs": pool_subs,
         }
+        # Consumed -- this demo supports one vault at a time, so a new
+        # ceremony can be initiated once this one's finished its job.
+        STATE["ceremony"] = None
         _save_state_locked()
 
         response = {
             "vault_id": vault_id,
             "prime_trustee": STATE["trustee_pubkeys"][prime_sub]["username"],
-            "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub, _ in pool_assignments],
-            "threshold": THRESHOLD,
+            "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub in pool_subs],
+            "threshold": threshold_d,
             "pool_threshold": metadata["pool_threshold"],
         }
 
@@ -456,11 +647,26 @@ def _build_snapshot() -> dict:
         vault = None
         if STATE["vault"] is not None:
             assignment = STATE["vault_assignment"]
+            pool_threshold = STATE["vault"]["metadata"]["pool_threshold"]
             vault = {
                 "prime_trustee": STATE["trustee_pubkeys"][assignment["prime_sub"]]["username"],
                 "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub in assignment["pool_subs"]],
-                "threshold": THRESHOLD,
-                "pool_threshold": STATE["vault"]["metadata"]["pool_threshold"],
+                "threshold": pool_threshold + 1,  # D = 1 mandatory prime + pool_threshold
+                "pool_threshold": pool_threshold,
+            }
+        ceremony = None
+        c = STATE["ceremony"]
+        if c is not None:
+            ceremony = {
+                "ceremony_id": c["ceremony_id"],
+                "status": c["status"],
+                "threshold_d": c["threshold_d"],
+                "trustees_t": c["trustees_t"],
+                "slots": [
+                    {"role": s["role"], "username": STATE["trustee_pubkeys"][s["sub"]]["username"], "status": s["status"]}
+                    for s in c["slots"]
+                ],
+                "backup_queue": [STATE["trustee_pubkeys"][sub]["username"] for sub in c["backup_queue"]],
             }
         session = STATE["recovery_session"]
         recovery = None
@@ -475,7 +681,7 @@ def _build_snapshot() -> dict:
             }
         return {
             "trustees": trustees,
-            "trustees_required": TRUSTEES_REQUIRED,
+            "ceremony": ceremony,
             "vault": vault,
             "recovery": recovery,
             "last_verify": STATE["last_verify"],
@@ -493,7 +699,7 @@ def _bearer_token() -> str:
     return auth[len("Bearer "):]
 
 
-def _require_operator() -> str:
+def _require_operator() -> tuple[str, str]:
     """Verifies the caller holds a live Keycloak session AND has been
     granted the shardic-operator realm role -- replaces the old static
     X-Admin-Token shared secret with a real authenticated, auditable
@@ -502,14 +708,15 @@ def _require_operator() -> str:
     membership is checked via the Admin API using the combiner's own
     service-account credential (the same trust model already used by
     get_group_members()), not by trusting claims out of the caller's
-    own token -- see keycloak_client.py's module docstring. Returns the
-    operator's username so callers can log who actually took the
-    action."""
+    own token -- see keycloak_client.py's module docstring. Returns
+    (sub, username) -- sub is needed by ceremony initiation's
+    separation-of-duties check (docs/ceremony-formation.md), username
+    is for logging."""
     sub, username = keycloak_client.get_verified_identity(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, _bearer_token())
     admin_token = keycloak_client.service_account_token(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, ADMIN_CLIENT_ID, ADMIN_CLIENT_SECRET)
     if not keycloak_client.user_has_realm_role(OPERATOR_OIDC_ISSUER, OPERATOR_REALM, admin_token, sub, OPERATOR_ROLE):
         raise CombinerError(f"caller does not hold the {OPERATOR_ROLE} role", status_code=403)
-    return username
+    return sub, username
 
 
 def _sub_from_bearer() -> str:
@@ -557,6 +764,23 @@ def vault_metadata():
         return jsonify(STATE["vault"]["metadata"])
 
 
+@app.route("/trustees/pending-invitation", methods=["GET"])
+def trustees_pending_invitation():
+    sub = _sub_from_bearer()
+    invitation = get_pending_invitation(sub)
+    if invitation is None:
+        return "", 204
+    return jsonify(invitation)
+
+
+@app.route("/trustees/invitation-response", methods=["POST"])
+def trustees_invitation_response():
+    sub = _sub_from_bearer()
+    body = request.get_json(force=True)
+    result = respond_to_invitation(sub, body["ceremony_id"], body["accept"])
+    return jsonify(result)
+
+
 @app.route("/trustees/pending-envelope", methods=["GET"])
 def trustees_pending_envelope():
     sub = _sub_from_bearer()
@@ -574,20 +798,35 @@ def trustees_shard_reply():
     return jsonify({"status": "accepted"})
 
 
+@app.route("/admin/ceremony/initiate", methods=["POST"])
+def admin_ceremony_initiate():
+    operator_sub, operator_username = _require_operator()
+    body = request.get_json(force=True)
+    result = initiate_ceremony(
+        operator_sub,
+        threshold_d=body["threshold_d"],
+        prime_username=body["prime"],
+        pool_usernames=body["pool"],
+        backup_usernames=body.get("backups", []),
+    )
+    print(f"ceremony {result['ceremony_id']} initiated by operator {operator_username}")
+    return jsonify(result)
+
+
 @app.route("/admin/vault/create", methods=["POST"])
 def admin_vault_create():
-    operator = _require_operator()
+    _operator_sub, operator_username = _require_operator()
     result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR)
-    print(f"vault created by operator {operator}")
+    print(f"vault created by operator {operator_username}")
     return jsonify(result)
 
 
 @app.route("/admin/vault/download", methods=["GET"])
 def admin_vault_download():
-    operator = _require_operator()
+    _operator_sub, operator_username = _require_operator()
     krypt_bytes = get_vault_krypt_bytes()
     vault_id = STATE["vault"]["vault_id"]
-    print(f"vault {vault_id} downloaded by operator {operator}")
+    print(f"vault {vault_id} downloaded by operator {operator_username}")
     return Response(
         krypt_bytes,
         mimetype="application/octet-stream",
@@ -605,25 +844,25 @@ def admin_group_members():
 
 @app.route("/admin/recovery/start", methods=["POST"])
 def admin_recovery_start():
-    operator = _require_operator()
+    _operator_sub, operator_username = _require_operator()
     session_id = start_recovery_session()
-    print(f"recovery session {session_id} started by operator {operator}")
+    print(f"recovery session {session_id} started by operator {operator_username}")
     return jsonify({"session_id": session_id})
 
 
 @app.route("/admin/recovery/finalize", methods=["POST"])
 def admin_recovery_finalize():
-    operator = _require_operator()
+    _operator_sub, operator_username = _require_operator()
     result = finalize_recovery(RECOVERED_OUTDIR)
-    print(f"recovery finalized by operator {operator}")
+    print(f"recovery finalized by operator {operator_username}")
     return jsonify(result)
 
 
 @app.route("/admin/recovery/verify", methods=["POST"])
 def admin_recovery_verify():
-    operator = _require_operator()
+    _operator_sub, operator_username = _require_operator()
     result = verify_recovery()
-    print(f"recovery verify requested by operator {operator}: match={result['match']}")
+    print(f"recovery verify requested by operator {operator_username}: match={result['match']}")
     return jsonify(result)
 
 
@@ -664,4 +903,5 @@ def dashboard_static(filename):
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=_ceremony_scan_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, threaded=True)

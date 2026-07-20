@@ -87,6 +87,36 @@ def register(combiner_base_url: str, token: str, public_key_raw: bytes) -> None:
         time.sleep(_REGISTER_RETRY_S)
 
 
+def _check_and_accept_invitation(combiner_base_url: str, token: str) -> None:
+    """Checks for a pending ceremony invitation and immediately accepts
+    it. This demo trustee has no interactive human to ask, so accepting
+    on sight is the same auto-everything behavior already used for
+    registration and shard replies. A trustee that shouldn't
+    participate in a given ceremony is simulated by pausing its
+    container (docker-compose pause) so it never polls to see the
+    invitation in the first place -- decline and silent timeout are
+    treated identically by the combiner either way, per
+    docs/ceremony-formation.md#decline--no-response-handling."""
+    resp = requests.get(
+        f"{combiner_base_url}/trustees/pending-invitation",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_TIMEOUT_S,
+    )
+    if resp.status_code != 200:
+        return
+    invitation = resp.json()
+    accept_resp = requests.post(
+        f"{combiner_base_url}/trustees/invitation-response",
+        json={"ceremony_id": invitation["ceremony_id"], "accept": True},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_TIMEOUT_S,
+    )
+    if accept_resp.status_code == 200:
+        log(f"accepted {invitation['role']} invitation for ceremony {invitation['ceremony_id']}")
+    else:
+        log(f"invitation accept failed: HTTP {accept_resp.status_code} {accept_resp.text}")
+
+
 def poll_and_respond_loop(
     combiner_base_url: str,
     keycloak_url: str,
@@ -102,6 +132,7 @@ def poll_and_respond_loop(
     while True:
         try:
             token = authenticate(keycloak_url, keycloak_realm, client_id, username, password)
+            _check_and_accept_invitation(combiner_base_url, token)
             resp = requests.get(
                 f"{combiner_base_url}/trustees/pending-envelope",
                 headers={"Authorization": f"Bearer {token}"},

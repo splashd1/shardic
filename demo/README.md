@@ -8,21 +8,26 @@ now just two design docs
 ([`docs/pubkey-envelope-plugin.md`](../docs/pubkey-envelope-plugin.md),
 [`docs/keycloak-credential-lookup.md`](../docs/keycloak-credential-lookup.md)).
 
-Keycloak holds 7 candidate trustees. 5 are selected for a demo vault
-(`--trustees 5 --threshold 3`: 1 mandatory prime trustee + 4 pool trustees,
-threshold = prime + 2 of 4 pool). Each trustee runs as its own container,
-generates its own keypair, and registers its public key with a **combiner**
-service. At vault creation, each trustee's codeword is pubkey-wrapped to
-their registered key instead of being printed to a file — the plaintext
-codeword is destroyed the moment every envelope is written. At recovery,
-each trustee's container decrypts its own envelope locally, derives its
-**shard** (the post-match Shamir value — the prime's mask, or a pool
-`(x, y)` point) using the project's existing, completely unmodified
-`vault_core_prime.try_match_word_prime`, and sends back only that shard,
-wrapped to the combiner's key. **The combiner never sees a codeword from
-any trustee, only shards** — and pausing 2 of the 5 running trustee
-containers before recovery still succeeds, proving the threshold-3 property
-live.
+Keycloak holds a directory of candidate trustees. An authenticated
+**operator** initiates a **ceremony** — per
+[`docs/ceremony-formation.md`](../docs/ceremony-formation.md) — naming a
+prime trustee, a pool of trustees, a threshold, and an ordered backup list;
+the combiner invites each primary, and automatically backfills from the
+backup list if anyone doesn't accept in time (decline and silent timeout
+are treated identically). Once every slot is accepted, the ceremony is
+**formed** and the vault can be created. Each trustee runs as its own
+container, generates its own keypair, and registers its public key with a
+**combiner** service ahead of any ceremony. At vault creation, each
+trustee's codeword is pubkey-wrapped to their registered key instead of
+being printed to a file — the plaintext codeword is destroyed the moment
+every envelope is written. At recovery, each trustee's container decrypts
+its own envelope locally, derives its **shard** (the post-match Shamir
+value — the prime's mask, or a pool `(x, y)` point) using the project's
+existing, completely unmodified `vault_core_prime.try_match_word_prime`,
+and sends back only that shard, wrapped to the combiner's key. **The
+combiner never sees a codeword from any trustee, only shards** — and
+pausing enough running trustee containers before recovery still succeeds,
+proving the threshold property live.
 
 No changes were made to `vault_core_prime.py`, `gf256_sss_prime.py`, or any
 other core crypto module — shardic-envelope is a pure bolt-on
@@ -46,13 +51,28 @@ reuse in a real deployment:
   [`docs/keycloak-credential-lookup.md`](../docs/keycloak-credential-lookup.md#the-operator-role)
   — the operator authenticates the same way trustees do (Direct Access
   Grant, plaintext demo password), which is the shortcut here, not the
-  identity model itself. Separation-of-duties enforcement (an operator
-  can never select themselves as a ceremony trustee) isn't built yet —
-  it depends on
-  [`docs/ceremony-formation.md`](../docs/ceremony-formation.md)'s
-  T-selection step, which this demo doesn't have: today `/admin/vault/create`
-  still just uses all 5 registered trustees, no selection to check
-  self-exclusion against.
+  identity model itself. Separation-of-duties *is* enforced: an operator
+  cannot name themselves as a primary or backup trustee for a ceremony
+  they initiate (checked against the full backup list, not just
+  primaries).
+- **Trustees accept ceremony invitations automatically, with no
+  interactive human decision.** This demo trustee is a headless
+  container, the same as it already is for registration and shard
+  replies — there's no one to ask "accept this invitation?" A trustee
+  that shouldn't participate in a given ceremony is simulated by pausing
+  its container (`docker-compose pause`) *before* the ceremony is
+  initiated, so it never polls to see the invitation — the same
+  mechanism the walkthrough already uses to prove the threshold
+  property during recovery, now also demonstrating decline/backfill
+  during formation.
+- **`/trustees/register` accepts any authenticated realm user, not just
+  `shardic-trustees` group members.** Found live while verifying
+  separation-of-duties (below): the `operator` account can authenticate
+  against `shardic-trustee-client` and self-register as a candidate
+  trustee, the same as any of the 7 named candidates. Group membership
+  gates who `/admin/keycloak/group-members` *lists* as a candidate, not
+  who *can register* — a real deployment would need registration itself
+  scoped to the directory group.
 - **The combiner's Keycloak service account has the realm-wide
   `view-users` role**, not fine-grained group-scoped admin permissions
   (which are correct but fiddly to hand-author in a realm export). Its
@@ -99,17 +119,14 @@ docker-compose --env-file .env up -d keycloak
 docker-compose ps   # wait for keycloak to show "healthy"
 ```
 
-**2. Select 5 of the 7 candidates.** This is the literal selection step —
-only these 5 named services get started:
+**2. Bring up 5 primary candidates plus 1 backup.** `trustee-frank` is
+tagged with the `candidates` profile (like `trustee-grace`, who stays
+undefined-started this run — swap her in instead of frank for a different
+demo shape):
 
 ```sh
-docker-compose --env-file .env up -d combiner trustee-alice trustee-bob trustee-carol trustee-dave trustee-erin
+docker-compose --profile candidates --env-file .env up -d combiner trustee-alice trustee-bob trustee-carol trustee-dave trustee-erin trustee-frank
 ```
-
-`trustee-frank` and `trustee-grace` are the other 2 candidates; they stay
-undefined-started (they're tagged with the `candidates` profile, so a plain
-`up` never starts them). Swap the selection for a different run with e.g.
-`docker-compose --profile candidates --env-file .env up -d trustee-frank`.
 
 **3. Registration is automatic.** Each trustee authenticates to Keycloak,
 generates a local keypair, and registers its public key with the combiner
@@ -130,7 +147,7 @@ operator_token() {
 
 curl -s -H "Authorization: Bearer $(operator_token)" \
   http://localhost:5000/admin/keycloak/group-members
-# shows all 7 candidates, for narrative context
+# shows all 7 candidates in the directory, for narrative context
 ```
 
 `operator_token` fetches a fresh token on every call (Keycloak's default
@@ -138,32 +155,68 @@ access-token lifespan is short), so it's safe to keep calling it across a
 slow, narrated walkthrough rather than reusing one variable that might
 expire mid-demo.
 
-**4. Create the demo vault:**
+**4. Pause `erin` to simulate a non-response, then initiate the
+ceremony.** Pausing *before* initiation means erin never polls to see her
+invitation — the combiner treats this identically to an explicit decline,
+governed by the invitation's TTL (`CEREMONY_INVITE_TTL_S`, 20s by
+default):
+
+```sh
+docker-compose pause trustee-erin
+
+curl -s -X POST -H "Authorization: Bearer $(operator_token)" -H "Content-Type: application/json" \
+  -d '{"threshold_d": 3, "prime": "alice", "pool": ["bob", "carol", "dave", "erin"], "backups": ["frank"]}' \
+  http://localhost:5000/admin/ceremony/initiate
+```
+
+Expect 200 with `erin` listed among `invited` (role `pool`) and `frank`
+listed in `backup_queue`.
+
+**5. Watch erin's invitation lapse and frank get backfilled in her
+place.** Wait past the TTL, then check the combiner's log:
+
+```sh
+sleep 22
+docker-compose logs combiner | grep -i "ceremony\|backfill"
+```
+
+Expect, in order: `... pool invitation to erin expired`, `... backfilled
+pool slot with frank`, then — once frank's (unpaused) container polls and
+auto-accepts — `... ceremony ... formed -- ready for vault creation`.
+Unpause erin now; she's not part of this ceremony, but there's no reason
+to leave her paused:
+
+```sh
+docker-compose unpause trustee-erin
+```
+
+**6. Create the vault**, now that the ceremony is formed:
 
 ```sh
 curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/vault/create
 ```
 
-Expect a 200 with `prime_trustee` (alphabetically-first of the 5 registered
-usernames — `alice`, given the default selection) and `pool_trustees`
-(`bob`, `carol`, `dave`, `erin`).
+Expect 200 with `prime_trustee: "alice"` and `pool_trustees: ["bob",
+"carol", "dave", "frank"]` — frank occupies the slot erin was originally
+invited to, in the same position.
 
-**5. Verify the codewords were wrapped, then destroyed** (never left as
+**7. Verify the codewords were wrapped, then destroyed** (never left as
 plaintext):
 
 ```sh
 docker exec $(docker-compose ps -q combiner) sh -c 'ls /data/vault/*_trustee_words 2>&1 || echo "gone, as expected"'
 ```
 
-**6. Prove the threshold-3 property live.** Since assignment is
-alphabetical (`alice` = prime), pausing `dave` and `erin` leaves
-`alice` (prime) + `bob` + `carol` running — exactly enough:
+**8. Prove the threshold-3 property live.** The vault's actual pool is
+`bob`, `carol`, `dave`, `frank` (erin was backfilled out during formation)
+— pausing `dave` and `frank` leaves `alice` (prime) + `bob` + `carol`
+running, exactly enough:
 
 ```sh
-docker-compose pause trustee-dave trustee-erin
+docker-compose pause trustee-dave trustee-frank
 ```
 
-**7. Trigger recovery:**
+**9. Trigger recovery:**
 
 ```sh
 curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/recovery/start
@@ -177,28 +230,28 @@ docker-compose logs -f trustee-alice trustee-bob trustee-carol
 # look for "shard submitted for session ..." from each
 ```
 
-**8. Finalize:**
+**10. Finalize:**
 
 ```sh
 curl -s -X POST -H "Authorization: Bearer $(operator_token)" http://localhost:5000/admin/recovery/finalize
 ```
 
 Expect 200 with `"trustees_used": ["alice", "bob", "carol"]` — proving
-`dave`/`erin` weren't needed.
+`dave`/`frank` weren't needed.
 
-**9. Verify byte-for-byte recovery:**
+**11. Verify byte-for-byte recovery:**
 
 ```sh
 docker exec $(docker-compose ps -q combiner) sh -c \
   'diff -r /data/sample-secret /data/recovered/sample-secret && echo "MATCH"'
 ```
 
-**10. Tear down** (removes volumes too — a fresh `.env`/re-run starts clean).
-Unpause `dave`/`erin` first if you paused them in step 6 — `down` can't stop
-a paused container cleanly:
+**12. Tear down** (removes volumes too — a fresh `.env`/re-run starts
+clean). Unpause `dave`/`frank` first if you paused them in step 8 — `down`
+can't stop a paused container cleanly:
 
 ```sh
-docker-compose unpause trustee-dave trustee-erin
+docker-compose unpause trustee-dave trustee-frank
 docker-compose --profile candidates down -v
 ```
 
@@ -210,7 +263,10 @@ docker-compose --profile candidates down -v
 | GET | `/vault/metadata` | none | Current `.krypt` metadata (not secret). |
 | GET | `/trustees/pending-envelope` | Bearer | Poll for a pending recovery envelope. |
 | POST | `/trustees/shard-reply` | Bearer | Submit a wrapped shard. |
-| POST | `/admin/vault/create` | Bearer (Keycloak, `shardic-operator` role) | Create the demo vault. |
+| GET | `/trustees/pending-invitation` | Bearer | Poll for a pending ceremony invitation. |
+| POST | `/trustees/invitation-response` | Bearer | Accept or decline a ceremony invitation. |
+| POST | `/admin/ceremony/initiate` | Bearer (Keycloak, `shardic-operator` role) | Initiate a ceremony: threshold, prime, pool, ordered backup list. |
+| POST | `/admin/vault/create` | Bearer (Keycloak, `shardic-operator` role) | Create the demo vault from a formed ceremony. |
 | GET | `/admin/vault/download` | Bearer (Keycloak, `shardic-operator` role) | Download the created `.krypt` container's raw bytes. |
 | GET | `/admin/keycloak/group-members` | Bearer (Keycloak, `shardic-operator` role) | List the 7 candidates. |
 | POST | `/admin/recovery/start` | Bearer (Keycloak, `shardic-operator` role) | Arm a recovery session. |

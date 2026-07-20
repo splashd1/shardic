@@ -4,11 +4,11 @@
   const state = {
     phase: 1,
     trustees: new Map(),      // username -> {fingerprint, status}
+    ceremony: null,           // {ceremony_id, status, slots, backup_queue, ...} or null
     vault: null,              // {prime_trustee, pool_trustees, threshold, pool_threshold}
     recovery: null,           // {repliedUsernames: Set, poolThreshold}
     finalized: null,          // {trustees_used, outdir}
     lastVerify: null,         // {match}
-    trusteesRequired: 5,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -241,8 +241,8 @@
   }
 
   function renderControls() {
-    const registeredCount = state.trustees.size;
-    $("btn-create-vault").disabled = !!state.vault || registeredCount < state.trusteesRequired;
+    const formed = !!state.ceremony && state.ceremony.status === "formed";
+    $("btn-create-vault").disabled = !!state.vault || !formed;
     $("btn-start-recovery").disabled = !state.vault;
     $("btn-finalize").disabled = !state.recovery;
     $("btn-verify").disabled = !state.finalized;
@@ -260,8 +260,8 @@
   // ------------------------------------------------------------ SSE wiring
 
   function applySnapshot(data) {
-    state.trusteesRequired = data.trustees_required;
     state.trustees = new Map(data.trustees.map((t) => [t.username, { fingerprint: t.fingerprint, status: t.status }]));
+    state.ceremony = data.ceremony;
     state.vault = data.vault;
     state.recovery = data.recovery
       ? { repliedUsernames: new Set(data.recovery.replied_usernames), poolThreshold: data.recovery.pool_threshold }
@@ -304,8 +304,32 @@
         log(`${data.username} is now ${data.status}`);
         break;
       }
+      case "ceremony_initiated": {
+        const invited = data.invited.map((s) => `${s.username} (${s.role})`).join(", ");
+        state.ceremony = { ceremony_id: data.ceremony_id, status: "forming" };
+        log(`ceremony initiated: invited ${invited}` + (data.backup_queue.length ? `; backups: ${data.backup_queue.join(", ")}` : ""));
+        break;
+      }
+      case "invitation_responded":
+        log(`${data.role} invitation ${data.accept ? "accepted" : "declined"}`);
+        break;
+      case "invitation_expired":
+        log(`${data.role} invitation to ${data.username} expired (no response within the TTL)`, true);
+        break;
+      case "backfill_invited":
+        log(`ceremony backfill: ${data.username} invited to fill the ${data.role} slot`);
+        break;
+      case "ceremony_formed":
+        if (state.ceremony) state.ceremony.status = "formed";
+        log("ceremony formed — every slot accepted, ready to create the vault");
+        break;
+      case "ceremony_failed":
+        if (state.ceremony) state.ceremony.status = "failed";
+        log("ceremony failed — backup list exhausted before every slot was filled", true);
+        break;
       case "vault_created":
         state.vault = data;
+        state.ceremony = null;
         log(`vault created — prime: ${data.prime_trustee}, pool: ${data.pool_trustees.join(", ")}`);
         setPhase(2);
         break;
