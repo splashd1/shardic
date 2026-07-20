@@ -1,3 +1,117 @@
+# Session notes — 2026-07-20 (Claude Code: wrote resolved ceremony/portability decisions into docs/, resolved the four remaining open items)
+
+## What happened
+
+Direct continuation of the 2026-07-19 entry below — first wrote that
+session's already-resolved decisions into `docs/` (they'd only existed
+in notes.md until now), then resolved the four items that entry had
+catalogued but left open. All via `AskUserQuestion` to force explicit
+choices, same pattern as last time.
+
+**Docs written for the 07-19 decisions** (commit `c370187`'s design
+work, not yet in `docs/` before today):
+- New `docs/ceremony-formation.md`: operator-initiated ceremony
+  formation — T/D + Prime-T selection, ordered backup list, ephemeral
+  per-trustee invitations, decline/timeout treated identically via TTL,
+  automatic race-safe backfill.
+- `docs/keycloak-credential-lookup.md`: new "The operator role" section
+  (today's single shared `COMBINER_ADMIN_TOKEN` vs. proposed
+  Keycloak-authenticated `shardic-operator` role, own OIDC client
+  config, enforced separation of duties across the full backup list)
+  and resolved the stale "combiner discovery" open question by
+  splitting it into self-service directory registration (pull) vs.
+  push-based ceremony invitations.
+- Caught a real naming collision while writing this: had been calling
+  the org-wide registered-trustee set a "pool," which collides with
+  shardic-prime's existing, unrelated "pool trustee" concept. Fixed
+  throughout to "candidate directory," and recorded the new terms
+  (candidate directory, `shardic-operator`, invitation, backfill) in
+  `docs/nomenclature.md` + the nomenclature skill so they don't drift
+  unrecorded.
+
+**Then resolved the four previously-catalogued open items**, each via
+an explicit user decision:
+- **Invitation delivery channel** → new `docs/notification-channels.md`.
+  Not a single fixed channel — a shared, pluggable, admin-configurable
+  `NotificationChannel` interface, reused across all three notification
+  needs in this design set (ceremony invite, envelope-ready ping,
+  drop-expired alert), each independently choosing which of
+  `notification-channel-concept.md`'s catalogued options are enabled.
+  This also resolves that doc's own long-open "should these share an
+  implementation?" question.
+- **`.krypt` archiving/durability** → new `docs/vault-storage-backend.md`,
+  after the user reframed the question as a storage-backend design
+  (should the combiner support SQL/NoSQL, bundle a DB, or stay
+  filesystem-only?). Landed on: pluggable `VaultStore` interface
+  mirroring `CredentialLookup`/`EnvelopeDropPoint`'s existing pattern —
+  filesystem-backed by default in v1.0 (matches what the combiner
+  already does today, confirmed by reading `demo/combiner/app.py:46`),
+  SQL/NoSQL as a config-selected alternate implementation later, no
+  bundled embedded DB and no docker-compose DB service by default —
+  consistent with the project's existing zero-new-dependency bias.
+- **Trustee private-key portability across devices** → device-bound,
+  re-register on loss confirmed (no export path ever exists; a lost
+  device is just an unplanned rotation, reusing the mechanism
+  `keycloak-credential-lookup.md` already specifies).
+- **Browser XSS residual risk** → web stays the default trustee-client
+  path; the risk (live XSS can invoke, not export, a non-extractable
+  key) is documented as an accepted residual risk rather than
+  downplayed; CLI/hardware-token registration is offered as an
+  explicit opt-in hardening option alongside the web default, not a
+  replacement for it.
+- The last two, plus the web-client design threads from the 07-19
+  entry's predecessor session (WebCrypto X25519, Authorization
+  Code+PKCE, GF(256) JS/WASM port, CORS) that had never been written to
+  `docs/` at all, got consolidated into a new
+  `docs/portable-trustee-client.md` — closing a gap flagged as a
+  follow-up two entries back.
+
+**README.md** doc list and the register→form→wrap→deliver→recover
+lifecycle paragraph updated for all three new docs; verified every new
+cross-doc anchor link resolves correctly against GitHub's heading-slug
+rules (including the "double-hyphen from a stripped `/`" quirk) before
+committing.
+
+Committed as `7d3655b` (single commit, 8 files, 691 insertions), pushed
+to `origin/main` at the user's explicit request after a review pause —
+`git status` was clean before push.
+
+## State at end
+
+Working tree clean, `origin/main` at `7d3655b`. Seven design docs now
+exist for shardic-envelope (`pubkey-envelope-plugin.md`,
+`keycloak-credential-lookup.md`, `portable-trustee-client.md`,
+`ceremony-formation.md`, `envelope-delivery.md`,
+`notification-channel-concept.md` + its resolved
+`notification-channels.md`, `vault-storage-backend.md`) — none
+implemented yet, all still proposal-tier.
+
+## Possibly worth following up
+
+- **Nothing implemented yet** — this and the 07-19 entry are both
+  design-only. The full lifecycle (register → form → wrap → deliver →
+  recover) plus the two cross-cutting concerns (notification, vault
+  storage) now has a complete, cross-linked design set with no known
+  open forks left in the ceremony/portability thread. Natural next
+  step if this keeps moving is either a reference implementation
+  (smallest first: probably `VaultStore`'s filesystem implementation,
+  since it's the least new ground) or another round of scrutiny on the
+  interface sketches before committing to one.
+- `notification-channels.md` itself left new open questions (fan-out
+  vs. fallback-chain delivery semantics when multiple channels are
+  enabled for one event, admin config storage/UI, per-trustee channel
+  preference layered on the deployment-wide setting) — smaller and more
+  concrete than what came before, worth a session if notification
+  design continues.
+- `ceremony-formation.md`'s own open questions are still open too:
+  what happens when the entire backup list is exhausted, whether
+  there's a ceremony-formation timeout distinct from per-invitation
+  TTL, concrete TTL defaults.
+- Same longstanding carryovers as every prior entry: no automated test
+  suite; Windows `.exe` build parity only ever CI-verified.
+
+---
+
 # Session notes — 2026-07-19 (Claude Code: portable trustee client — ceremony flow, op-role, decline handling)
 
 ## What happened
