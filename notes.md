@@ -1,3 +1,100 @@
+# Session notes — 2026-07-20 (Claude Code: implemented the VaultStore filesystem backend, first real code from this design set)
+
+## What happened
+
+Direct continuation of the same day's design-docs entry below — user
+asked to start implementing `docs/vault-storage-backend.md`'s
+`VaultStore` interface. First real code produced from the whole
+ceremony/portability/storage design thread; everything before this was
+docs-only.
+
+**Built `demo/combiner/vault_store.py`**: the `VaultStore` Protocol +
+`FilesystemVaultStore` reference implementation exactly as sketched in
+the design doc — keyed by `vault_id`, write-to-temp-then-`os.replace`
+for crash safety, `store()` raises `VaultAlreadyExistsError` on
+overwrite attempts, `retrieve()` raises `VaultNotFoundError` when
+missing. Added a `__main__` self-test mirroring `gf256_sss.py`'s
+existing pattern — passes standalone (`python3 vault_store.py`).
+
+**Wired it into `demo/combiner/app.py`**: `do_create_vault` now
+generates a `vault_id`, routes the `.krypt` bytes through
+`VAULT_STORE.store()`, and removes the scratch file
+`vault_core_prime.create_vault_prime` leaves behind (that function is
+shared with the CLI and always writes a real file — inherent to its
+signature — so the combiner now treats that as scratch space and
+deletes it once `VAULT_STORE` owns the bytes, rather than
+accumulating an untracked duplicate). State persistence (`state.json`)
+now keys on `vault_id` instead of a path that would otherwise go
+stale. Added a genuinely new capability rather than just symbolic
+wiring: `GET /admin/vault/download`, gated by the existing admin
+token, which is the first real caller of `retrieve()` — lets an
+operator pull the raw `.krypt` bytes back out of the combiner. Added a
+`VaultStoreError` → JSON error handler matching the app's existing
+pattern. Updated the Dockerfile (new module wasn't being copied into
+the image) and `demo/README.md`'s API table.
+
+**Verified end-to-end against the real containerized stack**, not just
+code review — this machine (`zenduo`) needed the same podman-socket
+workaround as before (`docker` is a shim execing podman;
+`docker-compose` v1.29 needed `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock`
+after confirming `podman.socket` was already enabled). Brought up
+Keycloak + combiner + 5 trustees, then confirmed: vault creation
+produces exactly one `<vault_id>.krypt` file in `VAULT_OUTDIR` (no
+leftover scratch copy, no stray `*_trustee_words` dir); the download
+route returns bytes byte-identical to the stored copy and parseable by
+`krypt_container.read_krypt`; `vault_id` survives a combiner restart
+mid-run; a full threshold-3 recovery (paused dave/erin, recovered via
+alice+bob+carol) still finalizes and verifies byte-for-byte; combiner
+logs show no errors/tracebacks throughout. Tore the stack down cleanly
+afterward (had to `docker unpause` dave/erin directly — `docker-compose
+unpause` silently no-op'd against this podman setup even with
+`--env-file`, a new minor quirk on this machine worth remembering,
+distinct from the already-known podman-socket one).
+
+**Updated the design docs to reflect reality**: `docs/vault-storage-
+backend.md`'s status changed from "design proposal, unimplemented" to
+implemented (filesystem backend only; SQL/NoSQL still future/unbuilt),
+removed now-stale line-number references, marked the "exact method
+signatures" open question resolved. Moved `VaultStore` out of the
+"proposed-but-not-implemented" table into the core glossary in both
+`docs/nomenclature.md` and the nomenclature skill (including its quick-
+reference table) — first term in this whole design set to graduate
+from proposed to real.
+
+Committed as `d946980` (7 files, 218 insertions), pushed to
+`origin/main` at the user's explicit request after a review pause.
+
+## State at end
+
+Working tree clean, `origin/main` at `d946980`. Demo stack fully torn
+down (containers, network, volumes all removed) — nothing left running
+on this machine.
+
+## Possibly worth following up
+
+- **This is the first implemented piece of the whole ceremony/
+  portability/storage design set** — `ceremony-formation.md`,
+  `notification-channels.md`, `portable-trustee-client.md`, and the
+  operator-role/Keycloak work in `keycloak-credential-lookup.md` are
+  all still proposal-only. Natural next step if this keeps moving:
+  probably the `shardic-operator` Keycloak role (replacing the static
+  `COMBINER_ADMIN_TOKEN`), since `VaultStore` just established the
+  "implement one interface at a time against the real demo stack"
+  pattern this session used successfully.
+- SQL/NoSQL `VaultStore` backends remain unimplemented by design —
+  filesystem is genuinely the only backend that exists in code, not
+  just the recommended default.
+- New minor environment quirk on `zenduo`: `docker-compose unpause`
+  (v1.29) silently did nothing against this podman setup even with
+  `--env-file .env`; had to `docker unpause <container-name>` directly
+  instead. Different from the already-known podman-socket
+  (`DOCKER_HOST`) issue — both needed this session.
+- Same longstanding carryovers: no automated test suite beyond the new
+  `vault_store.py` self-test; Windows `.exe` build parity only ever
+  CI-verified.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: wrote resolved ceremony/portability decisions into docs/, resolved the four remaining open items)
 
 ## What happened
