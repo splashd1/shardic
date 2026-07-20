@@ -160,6 +160,35 @@ doesn't assume they're live:
   shape backing `CredentialLookup`.
 - **`EnvelopeDropPoint`** (`Protocol`, `docs/envelope-delivery.md`) —
   pull-based, single-read delivery point for a wrapped envelope.
+- **Candidate directory** (`docs/keycloak-credential-lookup.md`,
+  `docs/ceremony-formation.md`) — the org-wide set of trustees who have
+  completed registration, before any specific ceremony selects from
+  them. Deliberately *not* called "pool" — that word is already taken
+  by the unrelated shardic-prime **pool trustee** concept (a per-vault
+  D−1 group); reusing it here would collide.
+- **`shardic-operator`** (Keycloak role, `docs/keycloak-credential-lookup.md`)
+  — the authenticated role required to initiate a ceremony or perform
+  any other combiner-privileged action. Proposed replacement for
+  today's single shared `COMBINER_ADMIN_TOKEN`.
+- **Invitation** (`docs/ceremony-formation.md`) — an ephemeral,
+  per-trustee message issued at ceremony-initiation time, naming which
+  combiner instance is running *this* ceremony and carrying a TTL and a
+  fresh liveness/proof-of-possession check. Distinct from
+  *registration* (directory-side, self-service, once) — an invitation
+  never triggers a fresh keypair.
+- **Backfill** (`docs/ceremony-formation.md`) — automatic promotion of
+  the next-ranked candidate on a ceremony's ordered backup list into a
+  primary's slot, triggered the moment that slot lapses (decline or TTL
+  timeout). Requires race-safe slot-closing (first valid acceptance
+  wins).
+- **`NotificationChannel`** (`Protocol`, `docs/notification-channels.md`)
+  — pluggable, admin-configurable delivery of a non-secret prompt;
+  shared by ceremony invites, envelope-ready pings, and drop-expired
+  alerts.
+- **`VaultStore`** (`Protocol`, `docs/vault-storage-backend.md`) —
+  pluggable backing store for the combiner's `.krypt` bytes;
+  filesystem-backed by default, SQL/NoSQL as a config-selected
+  alternate implementation.
 
 ## Lifecycle-state adjectives
 

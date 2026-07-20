@@ -151,6 +151,13 @@ record is superseded by the new one. This still leaves open the
 "rewrap already-wrapped codewords after rotation" question
 `pubkey-envelope-plugin.md` already flags as TBD.
 
+This same rotation mechanism is also the resolved answer to
+**device-loss portability**: there is no separate export/backup path
+for a trustee's private key. A lost or wiped device is just an
+unplanned rotation — see
+[portable-trustee-client.md](portable-trustee-client.md#device-portability-resolved-device-bound-re-register-on-loss)
+for the full reasoning and the alternatives considered and rejected.
+
 ## Keeping the OAuth dependency scoped to registration only
 
 Wrap-time (`vault_create*.py` → shardic-envelope) and recovery-time
@@ -162,6 +169,47 @@ conditions where "is the IdP up" is a bad bet — the same offline-first
 posture the base scheme already commits to. OIDC's role stays confined
 to the one occasional action (register/rotate a key) where verifying
 identity is actually the point.
+
+## The operator role
+
+**Today**, every privileged action in `demo/combiner/app.py` — vault
+create, recovery start/finalize/verify, even Keycloak group-membership
+reads — is gated by one static shared bearer token
+(`COMBINER_ADMIN_TOKEN`, checked by `_require_admin()` at
+`demo/combiner/app.py:44,460-552`). There's no identity behind it and
+no audit trail: anyone holding the token can do anything, and the
+combiner can't distinguish one operator from another or record who did
+what.
+
+**Proposed:** promote the operator to a real Keycloak-authenticated
+role, `shardic-operator`, in the same realm as the trustee directory
+but with its own OIDC client and its own
+`OPERATOR_OIDC_ISSUER`-style configuration — kept as a separately
+named setting from day one, even though it resolves to the same
+Keycloak URL as the trustee directory today. That's deliberate: the whole
+point of a distinct config knob is that splitting operators into their
+own realm later (a plausible real-world requirement — operators and
+trustees are different trust roles) becomes a config change, not a
+re-architecture. Authorization is by role claim (`shardic-operator`
+membership), not by realm identity alone — the same pattern this doc
+already uses to scope trustee selection to a dedicated group rather
+than "everyone with an SSO account" (see
+["Trustee selection via the Keycloak Admin
+API"](#trustee-selection-via-the-keycloak-admin-api) above).
+
+### Separation of duties is enforced, not just policy
+
+An operator can never self-select as one of the T selected trustees (primaries or
+backups) for a ceremony they themselves initiate. This needs an
+explicit identity check — comparing the operator's authenticated `sub`
+against every candidate `sub` at selection time — not a UI convention
+that a well-behaved operator happens to follow. The check runs at
+ceremony-initiation time and applies across the **entire backup list**,
+not just the initial T primaries — a backup-list gap is just as
+exploitable as a primary-list one. See
+[ceremony-formation.md](ceremony-formation.md#the-operator-role) for
+where this check fits into the full ceremony-initiation flow (T/D
+selection, primaries + ordered backup list, automatic backfill).
 
 ## New threat-model considerations
 
@@ -207,19 +255,38 @@ identity is actually the point.
 - Whether picker UI and registration tool ship as one `shardic_envelope.py`-adjacent
   script or stay split, mirroring the still-open "CLI/GUI surface"
   question in `pubkey-envelope-plugin.md`.
-- **Combiner/vault-holder discovery and registration initiation.** This
-  doc (and the working `demo/` implementation) assume a trustee already
-  knows which combiner to register with — in the demo that's a hardcoded
-  `COMBINER_URL` env var per container. A real deployment needs an
-  actual mechanism for two related but distinct questions: (1) how does
-  a trustee's local app discover *which* combiner/vault-holder instance
-  to register with, when an org may run more than one; and (2) how does
-  that registration get *initiated* — is it trustee-self-service the
-  moment they're added to the `shardic-trustees` group (pull), or does
-  the combiner/operator issue some kind of invitation the trustee acts
-  on (push)? The self-service model risks an unsolicited registration
-  landing at the wrong combiner instance; an invitation model adds a
-  step but gives the combiner an explicit, auditable "I expect this
-  trustee" signal before accepting a key. Unresolved which fits better,
-  and it interacts with the proof-of-possession nonce question above
-  (an invitation could double as the nonce carrier).
+- ~~Combiner/vault-holder discovery and registration initiation~~ —
+  **resolved by splitting it into two separate events, each with its
+  own answer** (see below); this was previously one open question
+  conflating two different problems.
+
+### Combiner discovery (resolved)
+
+This doc (and the working `demo/` implementation) previously assumed a
+trustee already knows which combiner to register with — in the demo
+that's a hardcoded `COMBINER_URL` env var per container. The original
+open question bundled two distinct problems together; resolving them
+separately is what unblocked it:
+
+1. **Directory registration** (this doc, above) is **self-service / pull**:
+   once a candidate is added to the `shardic-trustees` group, they
+   register their persistent keypair once, ahead of any ceremony,
+   against the org's known enrollment endpoint. This event is
+   decoupled from any specific ceremony — the resulting pubkey is
+   reusable across every future ceremony that selects this trustee.
+2. **Ceremony participation** is a separate, later event, and it's
+   **push / invitation-driven**: at ceremony-initiation time, an
+   operator issues an ephemeral, per-trustee invitation that names
+   which combiner/vault-holder instance is running *this specific
+   ceremony* and where to send a shard. The invitation doubles as
+   discovery (which instance) and a fresh liveness/proof-of-possession
+   check, without requiring a second registration event or a fresh
+   keypair. See [ceremony-formation.md](ceremony-formation.md) for the
+   full ceremony-initiation and invitation design.
+
+Conflating these two was what made the question feel unresolvable —
+"self-service risks landing at the wrong instance" is only a problem
+for the ceremony-participation half, which is now push/invitation-based
+specifically to close that gap; directory registration staying self-service
+is fine because it isn't tied to any one ceremony's combiner instance
+in the first place.

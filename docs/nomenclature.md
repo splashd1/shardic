@@ -47,6 +47,12 @@ Design-stage terms from `docs/*.md` proposals — no code implements these yet.
 | `CredentialLookup` (`Protocol`) | Resolves a trustee's registered public key. | `docs/pubkey-envelope-plugin.md` |
 | `PublicKeyRecord` | The data shape backing `CredentialLookup`. | `docs/pubkey-envelope-plugin.md` |
 | `EnvelopeDropPoint` (`Protocol`) | Pull-based, single-read delivery point for a wrapped envelope. | `docs/envelope-delivery.md` |
+| **Candidate directory** | The org-wide set of registered trustees, before any specific ceremony selects from them. Deliberately not "pool" — that word is already taken by the unrelated shardic-prime **pool trustee** concept. | `docs/keycloak-credential-lookup.md`, `docs/ceremony-formation.md` |
+| `shardic-operator` (Keycloak role) | Authenticated role required to initiate a ceremony or perform any other combiner-privileged action; proposed replacement for today's single shared `COMBINER_ADMIN_TOKEN`. | `docs/keycloak-credential-lookup.md` |
+| **Invitation** | Ephemeral, per-trustee message issued at ceremony-initiation time; names the combiner instance for *this* ceremony, carries a TTL and a fresh liveness/proof-of-possession check. Never triggers a fresh keypair — distinct from registration. | `docs/ceremony-formation.md` |
+| **Backfill** | Automatic promotion of the next-ranked candidate on a ceremony's ordered backup list into a lapsed primary's slot. Requires race-safe slot-closing. | `docs/ceremony-formation.md` |
+| `NotificationChannel` (`Protocol`) | Pluggable, admin-configurable delivery of a non-secret prompt (ceremony invite, envelope-ready ping, drop-expired alert). | `docs/notification-channels.md` |
+| `VaultStore` (`Protocol`) | Pluggable backing store for the combiner's `.krypt` bytes; filesystem-backed by default. | `docs/vault-storage-backend.md` |
 
 ## Lifecycle-state adjectives
 
