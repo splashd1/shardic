@@ -1,3 +1,119 @@
+# Session notes — 2026-07-20 (Claude Code: implemented the shardic-operator role, replacing the shared admin token)
+
+## What happened
+
+Direct continuation of the same day's `VaultStore` entry below — user
+asked to implement `docs/keycloak-credential-lookup.md`'s operator role
+next. Second piece of real code from the ceremony/portability/storage
+design set (identity/authorization half only — separation-of-duties
+enforcement deliberately left unbuilt, see below).
+
+**Built**: a `shardic-operator` Keycloak realm role, a dedicated
+`shardic-operator-client` OIDC client (public, Direct Access Grant —
+same demo shortcut trustees already use), and a demo `operator` user
+in `demo/keycloak/realm-export.json`. `demo/combiner/keycloak_client.py`
+got a new `user_has_realm_role()`, deliberately reusing the *existing*
+service-account + Admin API trust model already used by
+`get_group_members()` rather than trusting role claims decoded out of
+the caller's own token (real security reasoning worked through before
+picking this: userinfo doesn't surface role claims without a mapper,
+and locally decoding an unverified JWT's claims for an authorization
+decision would be a security bug even though the token itself gets
+validated). `demo/combiner/app.py`'s `_require_admin()` (static
+`X-Admin-Token` check) replaced wholesale with `_require_operator()` —
+verifies the bearer token, checks role membership, returns the
+operator's username so all six `/admin/*` routes can log who actually
+took each action (today's `COMBINER_ADMIN_TOKEN` gave no audit trail
+at all). Threaded new `OPERATOR_OIDC_ISSUER`/`OPERATOR_REALM` env vars
+through `docker-compose.yml`/`.env.example`, kept separately named from
+`KEYCLOAK_URL`/`KEYCLOAK_REALM` per the design doc's explicit
+future-realm-split reasoning even though they resolve to the same
+Keycloak instance today. Dashboard and README rewritten for
+`Authorization: Bearer` instead of the old shared-secret header.
+
+**Real bug found and fixed during verification, not anticipated in the
+plan**: Keycloak's `start-dev` mode derives a token's issuer from
+whichever hostname the request arrived on. An operator token fetched
+via `localhost:8080` (the natural thing for a human running curl from
+the host) got `iss=http://localhost:8080/...`, but the combiner
+verifies via `keycloak:8080` (container-internal) and computes its own
+current issuer as `http://keycloak:8080/...` for that same realm —
+mismatch, so userinfo rejected every operator request with a 401 that
+had nothing to do with authorization. Trustee auth never hit this
+because trustees fetch and present their own tokens entirely within
+the container network, both ends always agreeing on `keycloak:8080`.
+Diagnosed methodically (compared userinfo responses for the identical
+token via both hostnames, then compared each side's own `.well-known`
+issuer string) before reaching for a fix, rather than guessing. Fixed
+by pinning `KC_HOSTNAME: http://keycloak:8080` in `docker-compose.yml`
+so the issuer no longer varies by request path — this is the *first*
+route in the whole demo where a human (not a container) is the
+token-fetching party, so it's the first place this class of bug could
+even surface; worth remembering for any future human-facing auth flow
+added to the demo.
+
+**Verified end-to-end against the real containerized stack** (twice —
+the first full run got confounded by recreating the Keycloak container
+mid-test to apply the `KC_HOSTNAME` fix, which left already-running
+trustee containers with stale connections and one silently stalled
+poll loop; recognized this as a testing artifact rather than a real
+bug, did a full clean teardown, and reran from scratch to get a clean
+signal). Confirmed: no token → 401; valid trustee token presented to
+an admin route → 403 (correctly rejected, not mistaken for an
+operator); valid operator token → every admin route succeeds with a
+correct `operator <username>` line in the combiner's audit log; full
+vault-create → pause dave/erin → threshold-3 recovery → finalize →
+byte-for-byte verify all succeed under the new auth, identical results
+to the pre-existing static-token flow. Torn down cleanly afterward.
+
+**Docs updated honestly, not overclaiming**: `keycloak-credential-
+lookup.md`'s operator-role section marked implemented and rewritten to
+describe what actually shipped (including the KC_HOSTNAME gotcha as a
+documented lesson). Explicitly renamed its "separation of duties is
+enforced" subsection to "separation of duties: still unimplemented,
+not just unenforced" — that piece depends on `ceremony-formation.md`'s
+T-selection step, which doesn't exist in code (today's
+`/admin/vault/create` still just uses all 5 already-registered
+trustees, nothing to self-exclude from yet). Same honest-status
+treatment applied to `ceremony-formation.md`'s own "operator role"
+section and both nomenclature docs.
+
+Committed as `a48bd5e` (12 files, 237 insertions), pushed to
+`origin/main` at the user's explicit request after a review pause.
+
+## State at end
+
+Working tree clean, `origin/main` at `a48bd5e`. Demo stack fully torn
+down — nothing left running on this machine (`zenduo`).
+
+## Possibly worth following up
+
+- **Two pieces of the ceremony/portability/storage design set are now
+  implemented** (`VaultStore` filesystem backend, `shardic-operator`
+  identity/authorization) out of the whole set —
+  `ceremony-formation.md`'s T-selection/invitation/backfill logic,
+  `notification-channels.md`, and `portable-trustee-client.md` are all
+  still proposal-only. Separation-of-duties enforcement specifically
+  is now a *named, tracked* dependency on ceremony formation shipping,
+  not just an abstract future item.
+- If ceremony formation is implemented next, it's the natural
+  continuation of tonight's "implement one interface at a time,
+  verify against the real stack" pattern — and it's what would finally
+  let separation-of-duties actually get built and tested.
+- New environment lesson from this session, distinct from prior
+  podman/DOCKER_HOST notes: recreating a running Keycloak container
+  mid-session (e.g. to pick up a new env var) can leave *other*
+  already-running containers with stale/stuck connections that don't
+  self-heal within a normal retry loop — a full stack restart is the
+  reliable way to get a clean re-test, not just recreating the one
+  service that changed.
+- Same longstanding carryovers: no automated test suite beyond the
+  module-level self-tests that exist (`gf256_sss.py`,
+  `shardic_envelope_crypto.py`, `vault_store.py`); Windows `.exe` build
+  parity only ever CI-verified.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: implemented the VaultStore filesystem backend, first real code from this design set)
 
 ## What happened
