@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 dist/
 demo/.env
+demo/media/*.mp4
+demo/media/*.gif
