@@ -1,3 +1,27 @@
+# Session notes — 2026-07-21 (Claude Code: explained operator-token auth, caught a leaked credential, brought portable-demo README current)
+
+## What happened
+
+Started from a user-reported curl failure (`{"error":"missing Bearer token"}` calling `/admin/keycloak/group-members` with the old `X-Admin-Token` header). Root cause: `/admin/*` routes were migrated to real Keycloak-authenticated `shardic-operator`-role auth a while back (`demo/combiner/app.py`'s `_require_operator()`); `COMBINER_ADMIN_TOKEN` is dead/unused now. Walked the user through the actual flow (`demo/README.md`'s `operator_token()` helper — Direct Access Grant against `shardic-operator-client`) and ran it live against the running stack at `/vb/shardic-portable-demo/repo-files/demo` to confirm it returns all 7 candidates.
+
+**Found and fixed drift between two READMEs**: `/vb/shardic-portable-demo/README.md` (top-level portable-demo wrapper, not in git) had gone stale — still described the pre-ceremony-formation 5-of-7 direct-selection flow with the old `X-Admin-Token` auth, while the main repo's `demo/README.md` (and its identical copy at `repo-files/demo/README.md`) already had the operator-token flow, ceremony-formation/backfill walkthrough, and notification-channels section. First fixed just the stale auth references, then per user request fully replaced the file with the current `demo/README.md` content — confirmed byte-identical via diff. Left one pre-existing, out-of-scope issue: the file's relative links (`../README.md`, `../docs/...`) don't resolve inside the portable-demo package since `docs/` and the top-level repo `README.md` aren't bundled there.
+
+**Caught a near-miss credential leak**: user asked to commit/push `demo/.env.example` "which I updated" — the diff showed a real Gmail app password (`NOTIFY_EMAIL_APP_PASSWORD`, `NOTIFY_EMAIL_USERNAME=mailertest711@gmail.com`) filled into the *example* file instead of the gitignored `.env`, directly contradicting that file's own comment warning against exactly this. Flagged it instead of committing; user chose to revert (`git checkout -- demo/.env.example`). Working tree is clean now — the credential presumably still lives correctly in the user's local `.env` copies (both repo and portable-demo have it there already).
+
+## State at end
+
+- Main repo: working tree clean, nothing to commit — no code changes made here this session, only investigation/explanation plus the revert (which just restored tracked content).
+- `/vb/shardic-portable-demo/README.md` (outside git): now byte-identical to `demo/README.md`, on disk only (not committed anywhere, since the portable-demo directory isn't a git repo).
+- No credential was committed or pushed anywhere.
+
+## Possibly worth following up
+
+- Consider whether `/vb/shardic-portable-demo/README.md`'s broken relative doc links should be fixed (point at bundled files, or dropped/annotated) now that its content otherwise fully matches the main repo.
+- If that Gmail app password was ever briefly staged/typed elsewhere, worth confirming it hasn't leaked via shell history, and rotating it if there's any doubt.
+- Same longstanding open items as prior entries: `PORTABLE-DEMO.md`'s single-name `docker-compose unpause` quirk, `run-demo.ps1`'s missing rootless-podman-socket fallback, and the email notification channel still not exercised end-to-end.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: committed run-demo.sh, cleaned up scratch file)
 
 ## What happened
