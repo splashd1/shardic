@@ -1,3 +1,22 @@
+# Session notes — 2026-07-21 (Claude Code: committed run-demo.sh, cleaned up scratch file)
+
+## What happened
+
+Direct continuation of the same day's permissions-bug/demo-run entry below, same conversation. Two small follow-ups the user asked for after that entry was written:
+
+- **Committed `demo/run-demo.sh`** to the main repo (was previously copied in but left untracked, per the prior entry's "possibly worth following up" note). Commit `2a5d43e`, pushed.
+- **Deleted `demo/shardic demo mail.md`** — a scratch note documenting the Gmail `+suffix` addressing trick for demo notification emails, which the user confirmed is already covered by `combiner/notifications.py`'s `EmailChannel` docstring and the README's "Deliberate demo-only simplifications" section. It was untracked, so no commit needed for the removal.
+
+## State at end
+
+Working tree clean, nothing untracked, everything pushed to `origin/main` as of `2a5d43e`.
+
+## Possibly worth following up
+
+Same open items as the prior entry below still apply: the single-name `docker-compose unpause` quirk isn't yet documented in `PORTABLE-DEMO.md`, `run-demo.ps1` has no rootless-podman-socket fallback, and the email notification channel hasn't been exercised end-to-end.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: fixed portable-demo permissions bug, ran full demo, dashboard verify-banner fix)
 
 ## What happened
