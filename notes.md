@@ -1,3 +1,73 @@
+# Session notes — 2026-07-20 (Claude Code: wrote a Windows counterpart to run-demo.sh)
+
+## What happened
+
+Direct continuation of the same day's run-demo.sh entry below, same
+machine, same `/home/splashd/shardic-portable-demo/` package (outside
+git). User asked for a Windows equivalent of the detection script.
+
+**Built `run-demo.ps1`**: same detection order as the bash version —
+working `docker` (Docker Desktop, or Podman aliased as `docker`) with
+`docker-compose` or `docker compose`; then bare `podman` with
+`podman-compose` or `podman compose`; only then the bundled
+`Docker Desktop Installer.exe`. Writes `.cmd` shims into `.bundled-bin\`
+(added to `$env:Path`) so plain `docker`/`docker-compose` resolve
+correctly regardless of what's actually installed, mirroring the Linux
+shim approach. Meant to be dot-sourced (`. .\run-demo.ps1`) — noted in
+both the script header and the doc *why* that matters differently on
+Windows than bash's `source` (a `.ps1` run directly still executes
+in-process, so `$env:Path` changes persist either way; dot-sourcing is
+the safer/more explicit habit, not a strict requirement the way
+`source` is in bash).
+
+Two things a Docker Desktop/Podman-on-Windows failure mode gets: if
+`docker info` or `podman info` fails while the command itself exists,
+the script prints a specific hint (Docker Desktop not started / run
+`podman machine start`) instead of a bare failure — that's the single
+most common Windows-Podman gotcha, worth the extra line.
+
+**Explicitly flagged as unverified** — no Windows machine available to
+test against, same situation this project's `build_windows.bat`
+already documents in the main repo's `CLAUDE.md`. No `pwsh` available
+on this dev box either (checked; not installed via dnf), so it was
+hand-verified for PowerShell syntax/scoping correctness (splatting,
+`$LASTEXITCODE`, function-vs-script variable scope, `-and`/`-or`
+short-circuiting) rather than actually run. Both the script's own
+header comment and `PORTABLE-DEMO.md`'s Windows section say this
+plainly and point at flagging what's wrong once someone runs it for
+real.
+
+Updated `PORTABLE-DEMO.md`: Windows Step 1 now documents
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` +
+`. .\run-demo.ps1` instead of the old fully-manual installer steps
+(kept as the auto-launched fallback path, now with resume instructions
+since the script can't wait through a Windows reboot the way the Linux
+fallback can start `dockerd` unattended). Added `run-demo.ps1` to the
+"what's on this drive" file tree.
+
+## State at end
+
+Repo working tree unchanged — same as the prior entry, all of this
+session's edits live in `/home/splashd/shardic-portable-demo/`, outside
+git. Left the portable-demo directory clean afterward (removed a
+leftover empty `.bundled-bin/` from the previous session's live test
+run, since it had nothing in it worth keeping).
+
+## Possibly worth following up
+
+- `run-demo.ps1` needs an actual Windows run before it can be trusted
+  — first real test should specifically exercise: the dot-source
+  behavior claim, the Docker-Desktop-not-running hint text, and the
+  bundled-installer fallback launching with UAC elevation via
+  `Start-Process -Verb RunAs`.
+- If it's ever run against Podman Desktop on Windows specifically,
+  worth checking whether the same `docker-compose unpause <multiple
+  names>` no-op quirk (documented in `PORTABLE-DEMO.md`, found on this
+  session's Linux/Podman box) shows up there too, or if that's
+  Linux-provider-specific.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: added Docker/Podman auto-detection to the portable demo, verified it end-to-end for real)
 
 ## What happened
