@@ -31,14 +31,14 @@ DASH_WEBM=$(ls dashboard-recording/page@*.webm | head -1)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-ffmpeg -y -f lavfi -i color=c=0x1e1e2e:s=1280x800:d=4:r=25 \
+ffmpeg -y -f lavfi -i color=c=0x1e1e2e:s=1280x1000:d=4:r=25 \
   -vf "drawtext=fontfile=$FONT:text='Same ceremony -- through the live presenter dashboard':fontcolor=0xcdd6f4:fontsize=34:x=(w-text_w)/2:y=(h-text_h)/2-20,drawtext=fontfile=$FONT:text='(real-time capture, not sped up)':fontcolor=0x9399b2:fontsize=20:x=(w-text_w)/2:y=(h-text_h)/2+30" \
   -pix_fmt yuv420p "$TMP/transition.mp4" -v error
 
-ffmpeg -y -i "$DASH_WEBM" -vf "scale=1280:800,fps=25" -pix_fmt yuv420p -c:v libx264 -crf 18 "$TMP/dashboard.mp4" -v error
+ffmpeg -y -i "$DASH_WEBM" -vf "scale=1280:1000,fps=25" -pix_fmt yuv420p -c:v libx264 -crf 18 "$TMP/dashboard.mp4" -v error
 
 ffmpeg -y -i "$CLI" -i "$TMP/transition.mp4" -i "$TMP/dashboard.mp4" \
-  -filter_complex "[0:v]scale=1280:800,fps=25,format=yuv420p[v0];[1:v]format=yuv420p[v1];[2:v]format=yuv420p[v2];[v0][v1][v2]concat=n=3:v=1:a=0[outv]" \
+  -filter_complex "[0:v]scale=1280:1000,fps=25,format=yuv420p[v0];[1:v]format=yuv420p[v1];[2:v]format=yuv420p[v2];[v0][v1][v2]concat=n=3:v=1:a=0[outv]" \
   -map "[outv]" -c:v libx264 -crf 20 demo-walkthrough-full.mp4 -v error
 
 echo "wrote demo/media/demo-walkthrough-full.mp4"

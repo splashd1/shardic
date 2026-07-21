@@ -52,7 +52,7 @@ trap 'rm -rf "$TMP"' EXIT
 cut_dash() {
   local name=$1 start=$2 end=$3
   ffmpeg -y -ss "$start" -to "$end" -i "$DASH_WEBM" \
-    -vf "scale=1280:800,fps=25" -pix_fmt yuv420p -c:v libx264 -crf 18 \
+    -vf "scale=1280:1000,fps=25" -pix_fmt yuv420p -c:v libx264 -crf 18 \
     "$TMP/$name.mp4" -v error
 }
 
@@ -69,7 +69,7 @@ FILTER=""
 IDX=0
 add_input() {
   INPUTS+=(-i "$1")
-  FILTER+="[$IDX:v]scale=1280:800,fps=25,format=yuv420p[v$IDX];"
+  FILTER+="[$IDX:v]scale=1280:1000,fps=25,format=yuv420p[v$IDX];"
   IDX=$((IDX + 1))
 }
 

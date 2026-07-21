@@ -53,9 +53,9 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(channel="chrome", headless=True)
         context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": 1280, "height": 1000},
             record_video_dir=VIDEO_DIR,
-            record_video_size={"width": 1280, "height": 800},
+            record_video_size={"width": 1280, "height": 1000},
         )
         page = await context.new_page()
 
