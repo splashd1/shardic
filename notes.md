@@ -1,3 +1,91 @@
+# Session notes — 2026-07-20 (Claude Code: added Docker/Podman auto-detection to the portable demo, verified it end-to-end for real)
+
+## What happened
+
+Continuation of the same day's portable-demo-package entry below, on a
+different machine where that package had been copied to
+`/home/splashd/shardic-portable-demo` (not `/vb/shardic-demo` — the
+mount point differs per machine; treat the path as local, not part of
+the deliverable).
+
+**Problem**: the package's Step 1 only *documented* "skip this if
+Docker/Podman is already installed" — there was no actual detection,
+just prose telling the human to eyeball it. User wanted it to detect
+and use an existing install automatically.
+
+**Built `run-demo.sh`** (new file, top level of the portable-demo
+dir, outside git like the rest of that package): tries, in order, a
+working `docker` (native Docker or Podman aliased as `docker`) paired
+with `docker-compose` v1 or the `docker compose` v2 plugin; then a
+bare `podman` paired with `podman-compose` or `podman compose`; only
+falls back to the bundled offline installer tarball if neither works.
+Whichever it picks, it writes thin shim scripts into a local
+`.bundled-bin/` (added to `PATH`) so a literal `docker` /
+`docker-compose` on `PATH` always resolves correctly — meaning
+`PORTABLE-DEMO.md` and the unmodified `demo/README.md` walkthrough
+both work verbatim regardless of what's actually installed
+underneath. Meant to be `source`d (falls back to exec-ing a fresh
+interactive shell with the right `PATH` if run directly instead).
+Updated `PORTABLE-DEMO.md`'s Linux Step 1 to point at it.
+
+Verified the detection logic itself with three isolated-`PATH` tests
+(real docker+compose, podman-only forcing the shim path, and
+neither-present forcing the bundled-tarball extraction path) before
+touching anything live.
+
+**Then ran the actual demo end-to-end for real**, at the user's
+explicit request, on this machine's real environment (which already
+has Podman aliased as `docker`, real `docker-compose` binary) — not
+just `run-demo.sh`'s own detection, the full `demo/README.md`
+walkthrough: loaded images, ceremony formation with erin's invite
+expiring and frank backfilling, vault creation, codeword destruction
+verified, paused dave+frank to prove threshold-3, recovery finalized
+with `trustees_used: [alice, bob, carol]`, byte-for-byte `diff -r`
+match, full teardown. All 12 steps passed.
+
+**Two real bugs found during the live run, both environment/tooling
+quirks unrelated to `run-demo.sh`'s own logic**:
+- This sandbox specifically has a stale, wrong-version `systemd-run`
+  binary earlier on `PATH` than the correct one (`~/bin` shadowing
+  `/usr/bin`, apparently leftover from a nested fc43→fc44 rootfs
+  layering unique to this box). It broke Podman's `aardvark-dns`
+  networking until the `podman system service` daemon was restarted
+  with an explicitly clean `PATH` — the daemon's *own* env decides
+  what its child processes resolve, not the caller's shell. Not a
+  `run-demo.sh` bug and not something a real end-user PC would hit;
+  no doc change made for it.
+- Genuinely worth documenting: `docker-compose unpause <name1>
+  <name2> ...` (multiple names at once) silently no-ops under this
+  machine's podman-compose provider, leaving containers paused —
+  `demo/README.md` steps 5 and 12 both do exactly this, and a stuck
+  pause makes the later `down` fail ("container state improper").
+  Plain `docker unpause name1 name2` works reliably. Added this as a
+  callout in `PORTABLE-DEMO.md` right after the Step 3 handoff to
+  `demo/README.md`, since that's the quirk someone could actually hit
+  running this package on a Podman-backed machine.
+
+## State at end
+
+Repo working tree unchanged — this session's edits (`run-demo.sh`,
+`PORTABLE-DEMO.md`) are entirely inside
+`/home/splashd/shardic-portable-demo/`, outside git, same as the rest
+of that package. All test-run containers/networks/volumes/background
+processes were torn down and confirmed clean afterward.
+
+## Possibly worth following up
+
+- `run-demo.sh` is Linux-only by explicit user choice this session
+  (Windows stays fully manual, per the existing "no Windows box to
+  test against" constraint). If a Windows equivalent is ever wanted,
+  it'd need its own design pass, not a port of this script.
+- The podman-compose `unpause` quirk was only confirmed on this one
+  machine's stack (Podman 5.8.4 + its bundled compose provider) —
+  worth a second data point if this package gets used somewhere with
+  a genuinely different Podman/compose version before trusting the
+  workaround universally.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: built a portable offline demo package for `/vb/shardic-demo`)
 
 ## What happened
