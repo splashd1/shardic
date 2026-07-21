@@ -1,3 +1,31 @@
+# Session notes — 2026-07-21 (Claude Code: built the demo video pipeline end to end — CLI recording, live dashboard capture, phase-by-phase interleave)
+
+## What happened
+
+Built a full presenter-demo video pipeline from scratch, in stages, all under `demo/media/`:
+
+1. **CLI half**: `demo/walkthrough.tape` (a VHS script) types `demo/README.md`'s Walkthrough commands, but against `mock-shell.sh` — a replay shim shadowing `docker-compose`/`docker`/`curl` with real output captured from one live run (`fixtures/`, with provenance notes). Deterministic, fast (~1 min vs ~10+), needs no live stack to render, and never puts a real Bearer token in the published video. Commit `a4c681f`.
+2. **Dashboard half**: `capture_dashboard.py` drives one real live ceremony (pause erin, initiate, wait for TTL/backfill, create vault, prove the threshold by pausing dave/frank, recover, verify) while a headless Chrome tab video-records `/dashboard` via Playwright — this half is genuinely live, not mocked, since the dashboard isn't. Writes a timeline of each beat's wall-clock offset. `compose_full_video.sh` joins it with the CLI recording into a two-act video (CLI walkthrough, title card, full dashboard replay). Commit `1ab590d`.
+3. **Phase-by-phase interleave**: `split_tape_into_acts.py` slices `walkthrough.tape` into 8 self-contained tapes at new `# ACT-BOUNDARY:` markers (tape stays the single source of truth); `compose_interleaved_video.sh` cuts the dashboard recording into 7 clips at the real timeline beats and alternates CLI-act/dashboard-clip seven times, ending on the CLI's own teardown. Verified by sampling frames at every seam. Commit `fe2a1ab`.
+4. **Found and fixed a real cropping bug**: the dashboard's "Threshold-Proof" phase panel needs 933px of page height (measured live); the Playwright capture viewport was only 800px, so that content was never painted at all — not a scaling bug, a capture bug. Bumped both the dashboard viewport *and* the CLI's VHS `Set Height` to 1280x1000 (matching, so nothing needs letterboxing when composed), and re-rendered + re-verified everything. Also hardened `split_tape_into_acts.py` to extract its Require/Set preamble verbatim from `walkthrough.tape` instead of keeping a second hardcoded copy, closing off exactly the kind of drift that caused this bug's near-miss. Commit `a36f1a7`.
+
+All four commits pushed to `origin/main`.
+
+## State at end
+
+- Working tree clean, nothing uncommitted.
+- Generated media (`*.mp4`, `dashboard-recording/`, `dashboard-timeline.json`, `media/acts/*.mp4`) is all gitignored by design — only the pipeline scripts and tape are tracked. Re-run the pipeline (see `demo/media/README.md`) rather than expecting rendered video after a fresh checkout.
+- The live demo stack is currently **up** (keycloak + combiner + 6 trustees, dave/frank paused) from the last re-render pass — not torn down this time, in case the next session wants to iterate further without re-bringing-up.
+- `demo/media/demo-walkthrough-interleaved.mp4` is the most polished deliverable; `demo-walkthrough-full.mp4` (simpler two-act cut) and `demo-walkthrough.mp4` (CLI only) still exist as lighter-weight alternatives from the same pipeline.
+
+## Possibly worth following up
+
+- `PORTABLE-DEMO.md`'s stale `docker-compose unpause` workaround note (flagged in the prior entry below) is still unedited.
+- The interleave's dashboard clips currently come from a *single* capture run; if `capture_dashboard.py` is re-run, `compose_interleaved_video.sh` re-derives cut points from the fresh `dashboard-timeline.json` automatically — but the CLI acts would need re-rendering too if the ceremony's real timing shape changes enough to matter (it currently doesn't, since the CLI half doesn't depend on real timing at all).
+- Same longstanding items as prior entries: `run-demo.ps1`'s missing rootless-podman-socket fallback, and the email notification channel still not exercised end-to-end.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: root-caused and fixed the docker-compose unpause quirk under Podman)
 
 ## What happened
