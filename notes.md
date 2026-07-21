@@ -1,3 +1,90 @@
+# Session notes — 2026-07-20 (Claude Code: built a portable offline demo package for `/vb/shardic-demo`)
+
+## What happened
+
+Direct continuation of the same day's notification-channels entry
+below — no code changes this session, pure packaging/tooling work.
+User asked for a document + file set they could carry on a thumb drive
+and run the shardic-envelope Keycloak demo on an unfamiliar Windows or
+Linux PC. `demo/README.md` already covers prerequisites + walkthrough,
+but assumed a full git checkout, Docker/Podman already installed, and
+internet access on first run (image pulls, pip installs during build)
+— none of which hold for "any PC, no prep."
+
+Asked two clarifying questions up front (fully offline vs.
+internet-OK-on-first-run; bundle Docker installers or require them
+pre-installed) — user chose fully offline + bundle installers, the
+more ambitious of the two options each time.
+
+**Built `/vb/shardic-demo/`** (outside the git repo — this is a
+generated runtime artifact, not something to commit), 1.5GB:
+- `repo-files/`: the minimal file set the Docker builds actually need
+  — `demo/` plus the 9 root-level crypto modules the Dockerfiles
+  `COPY` (not the whole repo). Deliberately excluded `.env`,
+  `.env.swp`, and the user's own untracked `demo/shardic demo mail.md`
+  scratch note (same "not mine to bundle" treatment prior entries gave
+  that file).
+- `images/`: `docker save` tars for all 3 unique images (keycloak,
+  combiner, trustee — the 7 trustee services all build from one
+  identical image, so 3 tars, not 8). 753MB.
+- `docker-installers/`: genuine Docker Desktop Windows installer
+  (593MB) and Docker Engine static binaries + standalone Compose v2 for
+  Linux x86_64 (115MB), downloaded from docker.com and verified as
+  real PE/ELF binaries, not redirects or error pages.
+- `PORTABLE-DEMO.md`: new top-level walkthrough — install Docker from
+  the bundled installer if needed (flagged honestly: a first-time
+  Windows install will likely need a reboot for WSL2, a real
+  limitation, not something packaging can route around), `docker load`
+  the three tars, then hand off straight to the included
+  `demo/README.md`'s existing walkthrough unchanged.
+- A portable variant of `docker-compose.yml` inside `repo-files/demo/`
+  (the only file that actually differs from the live repo's copy):
+  adds explicit `image:` tags (`shardic-demo-combiner:offline`,
+  `shardic-demo-trustee:offline`) to the combiner/trustee services so
+  `docker-compose up` uses the pre-loaded images directly and never
+  attempts a build or network pull, regardless of directory name or
+  compose version (v1 vs. v2 use different implicit image-naming
+  conventions, so relying on that instead would've been fragile).
+
+**Actually verified the "offline" claim, not just assembled files**:
+wiped every shardic-related image tag from this machine to simulate a
+blank PC, ran the package's own documented steps (`docker load` the
+three tars, `docker-compose up` from `repo-files/demo/`), confirmed no
+build/pull step ran and all 6 trustees (alice/bob/carol/dave/erin/frank)
+registered successfully. Tore down and cleaned the test run afterward,
+then `rsync`'d the verified package from scratchpad to the user's
+requested destination, `/vb/shardic-demo` (outside the repo, so it
+survives independently of any git operations and is ready to copy
+straight to a physical drive).
+
+## State at end
+
+Repo working tree unchanged from the prior entry (only the same
+pre-existing untracked `demo/shardic demo mail.md`, still not staged).
+No commits this session — the deliverable lives entirely at
+`/vb/shardic-demo/`, outside git, by design (it's a generated
+snapshot, not source). `origin/main` still at `150975b`.
+
+## Possibly worth following up
+
+- `/vb/shardic-demo/` is a frozen snapshot as of this session's
+  commit (`d26dfbc`/`150975b`) — if the live demo changes meaningfully
+  later, this drive's copy goes stale silently (`PORTABLE-DEMO.md`
+  says as much, but nothing enforces it). No auto-refresh mechanism
+  exists or was asked for.
+- Never tested the actual Windows Docker Desktop install path
+  end-to-end (no Windows machine available in this environment) — the
+  installer's authenticity was verified (valid PE32+ binary from
+  docker.com) but the "first Windows run reboots for WSL2" claim in
+  the doc is documented general Docker Desktop knowledge, not
+  something this session personally observed happening.
+- Same longstanding carryovers: no automated test suite beyond
+  existing module-level self-tests; Windows `.exe` build parity (the
+  actual shardic CLI/GUI builds, unrelated to this demo package) only
+  ever CI-verified.
+
+---
+
 # Session notes — 2026-07-20 (Claude Code: implemented notification channels, fixed a heartbeat-thread crash found during verification)
 
 ## What happened
