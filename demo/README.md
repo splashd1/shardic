@@ -231,10 +231,15 @@ pool slot with frank`, a fresh `[notify:ceremony_invite]` line for frank's
 backfilled invitation, then — once frank's (unpaused) container polls and
 auto-accepts — `... ceremony ... formed -- ready for vault creation`.
 Unpause erin now; she's not part of this ceremony, but there's no reason
-to leave her paused:
+to leave her paused. Use `docker unpause` with the container name here,
+not `docker-compose unpause <service>` — under Podman, docker-compose's
+service-name lookup lists only `all=false` (running) containers to
+resolve against, and Podman's Docker-API compatibility layer excludes
+paused containers from that listing, so it reports `No containers to
+unpause` even though the container is right there:
 
 ```sh
-docker-compose unpause trustee-erin
+docker unpause demo_trustee-erin_1
 ```
 
 **6. Create the vault**, now that the ceremony is formed:
@@ -295,10 +300,11 @@ docker exec $(docker-compose ps -q combiner) sh -c \
 
 **12. Tear down** (removes volumes too — a fresh `.env`/re-run starts
 clean). Unpause `dave`/`frank` first if you paused them in step 8 — `down`
-can't stop a paused container cleanly:
+can't stop a paused container cleanly. As in step 5, use `docker unpause`
+with container names, not `docker-compose unpause`:
 
 ```sh
-docker-compose unpause trustee-dave trustee-frank
+docker unpause demo_trustee-dave_1 demo_trustee-frank_1
 docker-compose --profile candidates down -v
 ```
 
