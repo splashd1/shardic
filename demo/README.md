@@ -131,6 +131,15 @@ into the token field first). The dashboard is a pure bolt-on — a dashboard
 tab open or closed has no effect on the curl-driven walkthrough, and vice
 versa; both drive the same combiner state.
 
+**If you're watching the dashboard, it won't show the final "verified"
+banner after step 11 below** — step 11 checks recovery with a raw `docker
+exec ... diff -r`, which never touches the combiner API, so the dashboard
+never gets the SSE event that flips its verify banner from "pending" to
+"match". Click the dashboard's **Verify** button (or call
+`POST /admin/recovery/verify` yourself) to see that banner complete; the
+diagram's "done" state from step 10's finalize still updates normally
+either way.
+
 ## Prerequisites
 
 - Docker or Podman with a `docker-compose`-compatible CLI.
