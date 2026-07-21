@@ -1,4 +1,32 @@
-# Session notes — 2026-07-20 (Claude Code: wrote a Windows counterpart to run-demo.sh)
+# Session notes — 2026-07-21 (Claude Code: fixed portable-demo permissions bug, ran full demo, dashboard verify-banner fix)
+
+## What happened
+
+User hit a permissions error running `/vb/shardic-portable-demo/run-demo.sh` on this machine. Root cause: `docker-compose` v1.29.2 (python, docker-py-based) connects to the daemon over `/var/run/docker.sock`, which on this box is a symlink to the *rootful* system `podman.socket` — not accessible to this user. The `docker` CLI itself is actually the `podman-docker` shell shim (`exec podman "$@"`), so `docker info`/`docker-compose version` both looked healthy and masked the problem, since neither touches the socket. This user's own *rootless* `podman.socket` was already active at `/run/user/1000/podman/podman.sock` and fully reachable.
+
+**Fixed `run-demo.sh`** (in `/vb/shardic-portable-demo/`, outside git): added `_resolve_docker_host_sock`/`_socket_reachable`/`_fix_rootless_podman_socket` helpers that check whether the resolved socket is actually connectable, and if not, redirect `DOCKER_HOST` to the user's rootless podman socket. Runs right after docker/podman detection, only on the non-bundled paths.
+
+**Ran the full demo end-to-end** (all 12 steps of `demo/README.md`'s walkthrough) against the portable package with the fix in place: Keycloak healthy → 6 containers registered → ceremony initiated with erin paused → TTL lapse + backfill to frank confirmed via combiner logs → ceremony formed → vault created (`prime: alice`, `pool: [bob, carol, dave, frank]`) → codewords confirmed destroyed → dave/frank paused → recovery triggered → all 3 live trustees (alice/bob/carol) submitted shards → finalize confirmed `trustees_used: [alice, bob, carol]` → `diff -r` byte-for-byte match → clean teardown. Also reconfirmed the documented Podman-compose `unpause` quirk (containers silently staying paused) — turns out it isn't limited to the multi-name case `PORTABLE-DEMO.md` calls out; a *single*-name `docker-compose unpause trustee-erin` no-op'd too, and needed the `docker unpause <container>` workaround same as the documented multi-name case. Not yet reflected in the doc.
+
+**Dashboard verify-banner gap found and fixed**: user noticed the live dashboard never reached its final "verified" stage during the run. Cause: the dashboard's verify banner is driven by `STATE["last_verify"]`, set only inside the `POST /admin/recovery/verify` route handler — but `demo/README.md` step 11 verifies recovery via a raw `docker exec ... diff -r`, which never touches that endpoint, so the dashboard's SSE stream never gets the event. Added a note to the "Live dashboard" section of the main repo's `demo/README.md` explaining this and how to trigger the banner (click Verify, or call the endpoint directly). Committed (`81706e1`) and pushed to `origin/main`.
+
+**Synced fixes so the portable package is "gold"**: copied the fixed `run-demo.sh` into the main repo's `demo/` (new file there — the repo never had one before; it's untracked, not committed, since the user only asked to copy it, not commit). Also copied the dashboard-note `README.md` back into `/vb/shardic-portable-demo/repo-files/demo/README.md` so the portable copy has both fixes. `docker-compose.yml`/`.env` differences between repo and portable copy remain untouched (intentional offline image tags; local secrets).
+
+Also confirmed for the user, by reading `combiner/notifications.py`, that the email notification channel is a real working SMTP implementation (`EmailChannel`, `smtplib` + STARTTLS), not a stub — the only demo-only shortcut is Gmail `+suffix` addressing to simulate per-trustee recipients from one mailbox (since the demo's identity model tracks no real per-trustee contact address). Not tested this session — user deferred testing.
+
+## State at end
+
+- Main repo: `demo/run-demo.sh` is untracked (new, uncommitted) and `demo/shardic demo mail.md` is untracked (pre-existing, unrelated, user's own file) — everything else committed/pushed as of `81706e1`.
+- `/vb/shardic-portable-demo/` (outside git, no repo): `run-demo.sh` and `repo-files/demo/README.md` both carry this session's fixes on disk; nothing to commit there since it isn't a git repo.
+
+## Possibly worth following up
+
+- `demo/run-demo.sh` in the main repo is still untracked — ask before committing if that's wanted.
+- `PORTABLE-DEMO.md`'s "known quirk" note about `docker-compose unpause` only mentions the multi-name case; the single-name case reproduced live too and could use a doc update.
+- `run-demo.ps1` (Windows) has no equivalent rootless-podman-socket `DOCKER_HOST` fallback — still unverified/untested on an actual Windows box regardless.
+- Email notification channel is wired and should work but hasn't actually been exercised end-to-end (needs a real Gmail app password to try).
+
+
 
 ## What happened
 
