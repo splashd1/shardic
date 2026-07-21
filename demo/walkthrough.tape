@@ -94,6 +94,7 @@ Sleep 1s
 # SPLICE: open http://localhost:5000/dashboard now -- trustees populate
 # live over SSE as they register in step 3.
 
+# ACT-BOUNDARY: 1
 # --- Step 3: registration + the operator ---
 
 Type `banner "Each trustee generates its own keypair and registers its public key the moment it starts -- this is what lets a codeword be wrapped to a specific trustee later, instead of the combiner ever holding one in the clear."`
@@ -149,6 +150,7 @@ Wait
 Sleep 1.5s
 # SPLICE: dashboard's ceremony diagram lights up with invited/backup_queue state.
 
+# ACT-BOUNDARY: 2
 # --- Step 5: silence is a decline, backup list backfills ---
 
 Type `banner "Erin's pool invitation lapses on its own timeout -- treated identically to an explicit decline. The combiner backfills her slot from the ordered backup list: frank steps in. Once every slot is accepted, the ceremony is formed."`
@@ -174,6 +176,7 @@ Enter
 Wait
 Sleep 500ms
 
+# ACT-BOUNDARY: 3
 # --- Step 6: vault created for the ceremony that actually formed ---
 
 Type `banner "The pool that actually ends up holding shares is bob, carol, dave, frank -- erin was backfilled out before this moment ever happened."`
@@ -199,6 +202,7 @@ Enter
 Wait
 Sleep 1.5s
 
+# ACT-BOUNDARY: 4
 # --- Step 8: the threshold, proven live ---
 
 Type `banner "The pool's threshold is 2 of its 4 members, plus the mandatory prime. Pausing dave and frank -- simulating them going unavailable -- leaves exactly enough standing: alice, bob, carol."`
@@ -212,6 +216,7 @@ Wait
 Sleep 500ms
 # SPLICE: dashboard shows dave/frank paused, alice/bob/carol still live.
 
+# ACT-BOUNDARY: 5
 # --- Step 9: recovery -- shards, never codewords ---
 
 Type `banner "Each live trustee decrypts its own envelope locally and sends back only its shard -- the post-match Shamir value, never the codeword itself."`
@@ -230,6 +235,7 @@ Wait
 Sleep 1.5s
 # SPLICE: dashboard's recovery panel fills in as each of alice/bob/carol submits.
 
+# ACT-BOUNDARY: 6
 # --- Step 10: finalized -- who was actually needed ---
 
 Type `banner "The combiner combines the collected shards and decrypts. The record shows exactly who was actually used -- and who wasn't."`
@@ -262,6 +268,7 @@ Sleep 2s
 
 Sleep 2s
 
+# ACT-BOUNDARY: 7
 # --- Step 12: reset (optional -- see note) ---
 # Ends the recording on cleanup rather than the "MATCH" high note above.
 # Comment this block out to end the video at step 11 instead.

@@ -19,13 +19,25 @@ Three steps, run in order from the repo root:
    wall-clock offset of each named beat -- erin_paused, ceremony_formed,
    vault_created, dave_frank_paused, verified, etc.).
 
-3. **`demo/media/compose_full_video.sh`** -- concatenates the two into
-   `demo-walkthrough-full.mp4`: the CLI walkthrough, a title card, then
-   the dashboard capture in full. A straight two-act composition, not a
-   frame-by-frame interleave -- see the script's own header comment for
-   why, and for what a finer interleave would need
-   (`dashboard-timeline.json`'s real offsets, matched against the CLI
-   tape's own `# SPLICE:` comments).
+3. Compose the final video, either:
+   - **`demo/media/compose_full_video.sh`** -- two acts:
+     `demo-walkthrough-full.mp4` is the CLI walkthrough, a title card,
+     then the dashboard capture in full. Simple, needs only steps 1-2
+     above.
+   - **`demo/media/compose_interleaved_video.sh`** -- a real
+     phase-by-phase interleave: `demo-walkthrough-interleaved.mp4` cuts
+     between the CLI and the dashboard seven times, at
+     `dashboard-timeline.json`'s real beat offsets (erin paused, ceremony
+     initiated, formed, vault created, dave/frank paused, shards in,
+     finalized, verified). Needs one extra step first: split
+     `walkthrough.tape` into its 8 acts and render each --
+     `python3 demo/media/split_tape_into_acts.py && for f in
+     demo/media/acts/act*.tape; do vhs "$f"; done` -- since VHS can't
+     emit multiple cut points from one recording; the split happens at
+     `walkthrough.tape`'s own `# ACT-BOUNDARY:` markers, so the tape
+     stays the single source of truth for the CLI commands. Hard cuts,
+     no title cards -- terminal vs. browser chrome makes each cut
+     obvious on its own.
 
 Playwright needs its own bundled ffmpeg for video recording, separate
 from system ffmpeg: `python3 -m playwright install ffmpeg` (one-time).
@@ -37,5 +49,5 @@ the launch call to Playwright's own bundled Chromium
 deps).
 
 Generated outputs (`*.mp4`, `*.gif`, `dashboard-recording/`,
-`dashboard-timeline.json`) are gitignored -- rerun the pipeline rather
-than expecting them to already be on disk after a fresh checkout.
+`dashboard-timeline.json`, `acts/`) are gitignored -- rerun the pipeline
+rather than expecting them to already be on disk after a fresh checkout.
