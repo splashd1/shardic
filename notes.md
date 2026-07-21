@@ -1,3 +1,29 @@
+# Session notes — 2026-07-21 (Claude Code: root-caused and fixed the docker-compose unpause quirk under Podman)
+
+## What happened
+
+User reported `docker-compose unpause trustee-erin` failing on the running demo at `/vb/shardic-portable-demo`, while `docker-compose unpause demo_trustee-erin_1` (the literal container name) worked. Reproduced live against the running stack and found the actual root cause, which was more fundamental than the "multi-name unpause silently no-ops" quirk already noted in `PORTABLE-DEMO.md`:
+
+`docker-compose`'s service-name resolution (both `pause` and `unpause`) lists containers via `all=false` ("running only") on the Docker-API-compatible socket. Real Docker's `all=false` listing includes paused containers; Podman's Docker-API compatibility layer (serving the rootless socket at `/run/user/<uid>/podman/podman.sock`) excludes them. So once a container is actually paused, `docker-compose unpause <service>` can never find it — it always reports `No containers to unpause`, for single names too, not just multi-name lists. Going straight through `docker unpause <container-name>` (bypassing docker-compose's listing-based lookup) works reliably.
+
+Fixed at the source: `demo/README.md` steps 5 and 12 now call `docker unpause demo_trustee-erin_1` / `docker unpause demo_trustee-dave_1 demo_trustee-frank_1` directly instead of `docker-compose unpause <service>`, with an inline note explaining why. Committed (`aa73ae4`) and pushed. Copied the same fix into the portable-demo bundle's copy at `repo-files/demo/README.md` (kept byte-identical per convention — confirmed via diff) — that copy lives outside git so it's on-disk only, not committed.
+
+**Anomaly, unresolved**: after committing and pushing `aa73ae4`, `demo/README.md` was found *deleted from the working tree* (`git status` showed `D demo/README.md`) even though the commit itself was intact and already on `origin/main`. Restored cleanly via `git checkout -- demo/README.md` (no data lost — it was already committed). Cause unknown; nothing in this session's own commands should have removed it. Worth watching for recurrence.
+
+## State at end
+
+- Main repo: working tree clean, `aa73ae4` pushed to `origin/main`.
+- Portable-demo bundle's `repo-files/demo/README.md`: on-disk copy updated to match, not under git (that directory isn't a repo).
+- `PORTABLE-DEMO.md`'s existing "known quirk" note (lines ~158-168) is now stale/superseded — it only mentioned the multi-name silent-no-op case and a workaround, but the actual README.md steps no longer call `docker-compose unpause` at all. Not edited this session (out of scope for a notes-only sync); flagged below.
+
+## Possibly worth following up
+
+- Update `PORTABLE-DEMO.md`'s quirk note to reflect that `demo/README.md` now sidesteps the issue directly, rather than documenting a workaround for text that's since changed.
+- Figure out what deleted `demo/README.md` from the working tree post-commit, if it happens again.
+- Same longstanding open items as prior entries: `run-demo.ps1`'s missing rootless-podman-socket fallback, and the email notification channel still not exercised end-to-end.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: explained operator-token auth, caught a leaked credential, brought portable-demo README current)
 
 ## What happened
