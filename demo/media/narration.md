@@ -74,6 +74,15 @@ threshold-recovery round trip actually reproduces the original data.
 
 ## Dashboard-specific beats (for the interleaved cut)
 
+`capture_dashboard.py` now captures all of this for real and writes the
+actual wall-clock offset of each beat to `dashboard-timeline.json` (a
+~57s continuous recording in the run this was written against). The
+beats below predate that capture and describe the same moments in
+ceremony terms; match them against the timeline's keys
+(`erin_paused`, `ceremony_formed`, `vault_created`,
+`dave_frank_paused`, `shards_all_in`, `finalized`, `verified`, ...) when
+cutting.
+
 - After step 4: the ceremony diagram lights up with the initial
   invited/backup_queue state — a visual for "who was actually asked."
 - During step 5: the diagram animating invited → expired → backfilled →

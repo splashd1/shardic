@@ -26,11 +26,19 @@
 # Output path below is relative to wherever `vhs` is invoked from (the
 # repo root, per the above) -- not relative to this file.
 #
-# This tape covers the CLI half only. For "interleaved with dashboard
-# graphics": record http://localhost:5000/dashboard separately (e.g. a
-# scripted Playwright session, against a real live stack since the
-# dashboard isn't mocked) and splice with ffmpeg. `# SPLICE:` comments
-# below mark the cut points; media/narration.md has the fuller beats.
+# This tape covers the CLI half only. The dashboard half (real, live --
+# it isn't mocked) is captured separately by media/capture_dashboard.py
+# (a Playwright script that drives one real live ceremony while
+# video-recording the dashboard tab) and composed with this tape's
+# output by media/compose_full_video.sh into
+# media/demo-walkthrough-full.mp4. See media/README.md for the full
+# pipeline. `# SPLICE:` comments below and media/narration.md's
+# "Dashboard-specific beats" describe a finer-grained interleave (cutting
+# into this CLI recording at each beat, using the real offsets
+# capture_dashboard.py writes to media/dashboard-timeline.json) that
+# compose_full_video.sh does NOT currently do -- it's a straight
+# two-act composition instead. Worth building if the two-act cut isn't
+# enough.
 
 Output demo/media/demo-walkthrough.mp4
 
