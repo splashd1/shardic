@@ -151,6 +151,13 @@ an operator from self-selecting as a ceremony trustee) applies
 unchanged here: an operator must not be able to authorize a grant
 naming their own token.
 
+Note this is a *sufficiency* argument, not an *availability* one -- a
+single operator being cryptographically enough doesn't mean a single
+person is always reachable when needed. See
+[spac-concept.md](spac-concept.md#endgame-unlock-operator-grant--local-custodian-factor)'s
+RTO discussion for extending an on-call backup roster to this role
+without weakening the one-authorizer property above.
+
 ## Token-side possession factor
 
 Per the "mere possession" discussion in the parent doc's threat model:

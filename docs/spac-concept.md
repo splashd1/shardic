@@ -130,7 +130,11 @@ mask        = the fielded system's own hardware-sealed secret
               shardware-token-embed-extract.md's "Token-side
               possession factor" -- generated once at emplacement,
               never leaves this hardware, never typed by a human,
-              never a codeword)
+              never a codeword). A separate X25519 keypair
+              (field_pubkey/field_privkey), unrelated to mask and
+              used only to receive a wrapped MAC key, is introduced
+              later in this doc -- see "PT/CT swap integrity"'s Key
+              sources.
 pool_shares = ordinary trustee shares, pool_threshold-of-(T-1),
               delivered by shardware-token or network exactly as
               already designed elsewhere in this project
@@ -235,22 +239,50 @@ commitment = KDF(salt, PT_SPAC)   -- kdf.py's existing Argon2id/PBKDF2
 `PT_SPAC`, the same assumption every codeword-derived KDF output in
 this project already relies on.
 
-Checked at two separate points, not once:
+Checked at two separate points, but not with the same mechanism -- the
+frequent one has to be cheap:
 
-1. **At emplacement** (pre-wrap, by the wrap operator): verify
-   `KDF(salt, PT_SPAC) == commitment` before producing
+1. **At emplacement** (pre-wrap, by the wrap operator, once per
+   `PT_SPAC` version): verify `KDF(salt, PT_SPAC) == commitment` and
+   `Ed25519_Verify(approver_pubkey, approval_cert)` before producing
    `CT_SPAC = AES-256-GCM(PT_SPAC, DEK)`. Refuse to wrap on mismatch --
    catches an accidental or malicious substitution at the moment it
-   would happen.
-2. **At arming** (post-decrypt, inside the fielded client module):
-   after reconstructing `DEK` and decrypting, verify
-   `KDF(salt, decrypted_PT_SPAC) == commitment` *again* before handing
-   off to the protected action. This is the check that earns its keep
-   independently of (1) -- it catches anything that changed *between*
-   emplacement and the real ceremony (e.g. a compromised build
-   pipeline re-wrapping a different `CT_SPAC` afterward), which
-   AES-GCM's own integrity check can't see, since a re-wrap with a
-   different plaintext is still a perfectly valid ciphertext.
+   would happen. Argon2id is deliberately slow/memory-hard (why it's
+   the right choice for a possibly-low-entropy `PT_SPAC`), which is
+   fine here since this runs once per version, never once per arming.
+2. **At arming** (post-decrypt, inside the fielded client module,
+   *every ceremony* -- on the [latency-sensitive
+   path](#availability-and-latency-rto)): re-running the same slow KDF
+   and signature check on every arming event would fight the RTO
+   directly, so this step uses a **fast MAC** derived and wrapped at
+   emplacement time instead:
+
+```
+-- at emplacement (Phase 2, wrap operator, after step 1's KDF/
+-- signature check already passed):
+mac_key         = random(32 bytes)
+tag             = HMAC-SHA256(mac_key, PT_SPAC)
+wrapped_mac_key = shardic_envelope_crypto.wrap(mac_key, field_pubkey)
+-- {tag, wrapped_mac_key} joins the emplacement bundle; mac_key itself
+-- never travels unwrapped, so nobody holding just the bundle -- only
+-- the fielded system's own private key -- can forge a new tag for a
+-- substituted PT_SPAC
+
+-- at arming (Phase 3, fielded client module, every ceremony):
+mac_key = shardic_envelope_crypto.unwrap(wrapped_mac_key, field_privkey)
+assert HMAC-SHA256(mac_key, decrypted_PT_SPAC) == tag   -- refuse to arm on mismatch
+```
+
+This still catches what this check exists for -- anything that changed
+*between* emplacement and the real ceremony, such as a compromised
+build pipeline re-wrapping a different `CT_SPAC` afterward, which
+AES-GCM's own integrity check can't see since a re-wrap with a
+different plaintext is still a perfectly valid ciphertext -- at
+ECIES-unwrap-plus-HMAC cost (milliseconds) instead of an Argon2id cost
+on every arming event. The slow KDF/signature check from step 1 stays
+available as a periodic, out-of-band audit (not on the arming critical
+path) for anyone who wants belt-and-suspenders reassurance that
+nothing has drifted since approval.
 
 Fail loudly on either mismatch -- refuse to arm, don't silently
 proceed -- matching this project's existing posture (AES-GCM auth-tag
@@ -302,17 +334,27 @@ Phase 2 -- Vault creation / CT_SPAC generation (wrap operator):
   3. DEK = random(32 bytes)
   4. mask, pool_shares = split_secret_with_prime(DEK, pool_threshold, pool_size)  -- unmodified
   5. CT_SPAC = AES-256-GCM(PT_SPAC, DEK)                                          -- unmodified
-  6. Emplace {CT_SPAC, salt, commitment, approval_cert} as one bundle
-     (all non-secret except CT_SPAC itself, safe to travel together)
-  7. Destroy PT_SPAC, DEK, and any wrap-time copy immediately --
+  6. mac_key = random(32 bytes)
+     tag = HMAC-SHA256(mac_key, PT_SPAC)
+     wrapped_mac_key = shardic_envelope_crypto.wrap(mac_key, field_pubkey)  -- unmodified wrap()
+  7. Emplace {CT_SPAC, salt, commitment, approval_cert, tag, wrapped_mac_key}
+     as one bundle (all non-secret except CT_SPAC and wrapped_mac_key's
+     sealed contents, safe to travel together)
+  8. Destroy PT_SPAC, DEK, mac_key, and any wrap-time copy immediately --
      extends the existing _secure_delete discipline
 
-Phase 3 -- Arming (fielded client module, every ceremony): reconstruct
-            DEK from mask + pool shares, decrypt to a candidate
-            PT_SPAC, re-run both Ed25519_Verify and the KDF check
-            against the same bundled {salt, commitment, approval_cert}
-            before handing off -- this is what catches anything altered
-            between emplacement and the real ceremony.
+Phase 3 -- Arming (fielded client module, every ceremony -- fast path,
+            per "Availability and latency (RTO)" below):
+
+  1. DEK = reconstruct_secret_with_prime(mask, pool_shares)      -- unmodified
+  2. candidate_PT_SPAC = AES-256-GCM_decrypt(CT_SPAC, DEK)
+  3. mac_key = shardic_envelope_crypto.unwrap(wrapped_mac_key, field_privkey)
+  4. Verify HMAC-SHA256(mac_key, candidate_PT_SPAC) == tag       -- refuse to arm on mismatch
+  5. Hand off candidate_PT_SPAC to the protected action, then
+     zeroize mac_key and candidate_PT_SPAC immediately
+
+  (the slow KDF/signature re-check from Phase 2 stays available as a
+   periodic, out-of-band audit -- not on this path)
 ```
 
 ### Key sources
@@ -328,6 +370,17 @@ Phase 3 -- Arming (fielded client module, every ceremony): reconstruct
 - **`DEK`** -- ephemeral, unchanged from today's model.
 - **`mask`** -- the fielded system's own hardware-sealed secret,
   unchanged from the fielded-system-binding design above.
+- **Fielded system's X25519 keypair (`field_pubkey`/`field_privkey`)**
+  -- a new, minimal addition alongside `mask`: generated at the same
+  emplacement bootstrap moment, using the same
+  `shardic_envelope_crypto.generate_keypair()` already used by every
+  other party in this project. Its only job is receiving
+  `wrapped_mac_key`; it plays no role in DEK reconstruction, which
+  stays exclusively `mask`'s job.
+- **`mac_key`** -- ephemeral, generated fresh per `CT_SPAC`/version at
+  emplacement, destroyed at the wrap operator immediately after use,
+  re-derived locally (via `unwrap`) by the fielded system at every
+  arming and zeroized after use.
 - **Trustee keypairs (X25519)** -- unchanged.
 - **`vault_root_key`/`vault_intermediate_key`** (the extraction-grant
   chain from `shardware-token-embed-extract.md`) -- **kept deliberately
@@ -346,6 +399,106 @@ standing up yet: a witnessed, logged approval record substitutes for
 cryptographic-vs-procedural choice already offered for trustee
 identity in `shardware-token.md`.
 
+## Availability and latency (RTO)
+
+"Unlock a sensitive file" tolerates a slow, deliberate, hours-long
+ceremony; "arm a weapon" or "in-the-moment financial access" plausibly
+can't. Rather than pick one universal answer, a SPAC deployment should
+declare its own target **RTO** (recovery time objective) and choose
+from the options below accordingly -- the same pluggable-per-
+deployment pattern as `LocalUnlockFactor` and the physical-medium table
+in `shardware-token.md`.
+
+Three points in the ceremony drive almost all of the variance. None of
+the mitigations below reduce `pool_threshold`, `D`, or how many
+independent inputs are cryptographically required -- every lever here
+is about pre-positioning and parallelizing already-required inputs,
+never about requiring fewer of them, per this doc's [design
+priorities](#design-priorities).
+
+### Convening the quorum
+
+Driver: whether the ceremony was **pre-formed** ahead of the RTO clock
+starting (`ceremony-formation.md`) versus formed ad hoc; trustees'
+on-call posture; the notification mechanism; whether trustees are
+co-located or dispersed.
+
+| Option | Mechanics | Accessibility | Automation | Rough time |
+|---|---|---|---|---|
+| Pre-formed standing ceremony, push notification, one-tap response | Trustees already accepted invitations in advance; alert via push/SMS; single tap derives + submits the share | High -- anywhere with a data signal | High | seconds to ~10 min, bounded mostly by human reaction time |
+| Ad hoc formed ceremony, phone-tree/manual notification | No pre-forming; each trustee located and contacted individually, logs in and submits manually | Depends entirely on reachability at that moment | Low | tens of minutes to several hours (longer if unreachable) |
+| Co-located duty crew, in-person physical action | Trustees already physically present, act at a console or insert a shardware-token | High only within the facility | Low (physical), but fast -- remote reachability isn't a variable | seconds to a couple minutes, bounded by walk-to-station time |
+
+`ceremony-formation.md`'s existing selection/invitation/backfill
+machinery is the biggest lever here and needs no modification --
+pre-forming the ceremony converts "select, invite, wait for accept"
+into a one-time setup cost paid before the RTO clock starts.
+
+### Share delivery
+
+Driver: transport medium -- network versus physical -- and for
+physical, distance/custody logistics; for network, whether the
+trustee's device is already authenticated.
+
+| Option | Mechanics | Accessibility | Automation | Rough time |
+|---|---|---|---|---|
+| Direct network submission | Already-authenticated device POSTs `shard_envelope` to the combiner | Anywhere with network | High | sub-second to a few seconds |
+| Local physical carriage | USB/smartcard token hand-carried a short distance within one facility, read by the ingestion adapter | Single-site only | Low | a few minutes to tens of minutes, facility-size dependent |
+| Long-haul physical carriage | Courier, safe-deposit retrieval, cross-site hand-off | Anywhere, but slow | Minimal, deliberately | hours to days |
+
+Air-gap/no-network-dependency and tight RTO are largely **mutually
+exclusive properties** -- a deployment picks the one it actually needs;
+this design doesn't provide both for free.
+
+### Endgame unlock (operator grant + local-custodian factor)
+
+Driver: whether the operator/custodian are pre-positioned (on-call)
+versus paged cold; the mechanics of the local factor; whether the
+extraction-grant path is live-per-request or pre-authorized in batch;
+and -- the one place actual *compute* latency rather than human/
+logistics latency matters -- the swap-integrity check's own cost,
+resolved by the fast MAC in ["PT/CT swap
+integrity"](#pt-ct-swap-integrity) above.
+
+| Option | Mechanics | Accessibility | Automation | Rough time |
+|---|---|---|---|---|
+| Operator + custodian both on-call, PIN/key-switch, fast-tag swap check | Pre-positioned humans, near-instant local actions, cheap crypto check | High if the on-call roster is staffed | High | single-digit seconds to under a minute |
+| Remote operator paged on demand, on-site custodian | Operator located, logs into admin console, reviews, approves over network | Moderate -- depends on response time | Moderate | a few minutes to ~30 min |
+| Dual local custodian (two key-switches, PAL-style), no live remote step | Two people coordinate a simultaneous local action, possibly against a pre-authorized grant batch | High if both already briefed/co-located | Low, deliberately manual | tens of seconds to a few minutes if present; longer if summoned |
+
+A single operator and single local custodian being *cryptographically
+sufficient*
+([shardware-token-embed-extract.md](shardware-token-embed-extract.md#why-single-operator-authorization-is-sufficient),
+["Fielded-system local-unlock
+factor"](#fielded-system-local-unlock-factor)) doesn't make either one
+*available* -- a lone authorized person who can't be reached at 3am is
+a single point of failure for latency, separate from being a single
+point of authorization. Fix: extend `ceremony-formation.md`'s ordered-
+backup-list/backfill mechanism to the operator and local-custodian
+roles too -- an on-call roster, not a ceremony-trustee list. This
+doesn't weaken the security property at all: exactly one operator
+still authorizes any given grant, exactly one custodian still supplies
+the local factor -- the backup list only widens *who's eligible* to be
+that one person when the primary is unreachable.
+
+### CONOPS drives the choice, traded against unauthorized-access resistance
+
+None of the tables above name a winner. The concrete choice at each of
+the three points is a CONOPS decision -- who the trustees/operator/
+custodians actually are, how they're staffed, what notification
+infrastructure exists, and what RTO the deployment has committed to.
+Each choice is also a real trade against unauthorized-access
+resistance, not just speed: a pre-formed, pre-positioned, networked,
+single-tap ceremony is fast, but a coerced or compromised set of
+already-standing, already-authenticated parties moves through it just
+as fast. Physical carriage, ad hoc paging, and dual-custodian
+coordination are slow, but that same friction is often a deliberate
+deterrent -- courier custody logs, two people having to physically
+coordinate -- that creates more real-world opportunities for something
+to be noticed before completion. RTO is one half of a trade the CONOPS
+has to state on purpose against unauthorized-access resistance, not
+something this design should default on its behalf.
+
 ## Open questions / TBD
 
 - **Naming**: "prime trustee" currently implies a human throughout
@@ -354,12 +507,6 @@ identity in `shardware-token.md`.
   trustee" simply generalizes to cover both, is unresolved -- flag for
   a dedicated nomenclature pass once this stabilizes, rather than
   deciding unilaterally here.
-- **Availability/latency requirements**: recovering a file vault
-  tolerates a slow, deliberate, hours-long ceremony. Some SPAC
-  examples (arming, in-the-moment financial access) plausibly can't --
-  a real constraint on ceremony design (how fast can pool-threshold
-  trustees plus an operator realistically convene?) that "unlock a
-  sensitive file" never had to answer.
 - **Concrete `LocalUnlockFactor` choice**: which category (possessed,
   known, or identity-bound) to actually build for a given fielded
   deployment is deliberately left unpicked -- see
