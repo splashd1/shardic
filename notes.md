@@ -1,8 +1,8 @@
-# Session notes — 2026-07-22 (Claude Code: designed and fully landed the shardware-token + SPAC design thread — three new docs, six commits, everything committed and pushed)
+# Session notes — 2026-07-22 (Claude Code: designed the shardware-token + SPAC thread, then wrote a v2.0 white paper distilling it — nine stages, seven commits, everything committed and pushed)
 
 ## What happened
 
-A long design-brainstorm session (no code touched — pure `docs/*.md` design proposals) exploring hardware-token alternatives to the network-based shardic-envelope ceremony, then generalizing well past that starting point. Eight stages, each committed and pushed as it landed:
+A long design-brainstorm session (no code touched — `docs/*.md` design proposals plus one new white paper) exploring hardware-token alternatives to the network-based shardic-envelope ceremony, then generalizing well past that starting point and finally writing it up for an external-facing audience. Nine stages, each committed and pushed as it landed:
 
 1. **Naming**: coined/confirmed **shardware-token** (user's own portmanteau) as the identifier for the whole hardware-token family.
 2. **Physical carriage** (`docs/shardware-token.md`): a dumb-storage USB token carries an already-`wrap()`-ed `shard_envelope` — no new crypto needed, `submit_shard_reply()` (`app.py:593`) reused unmodified. Flagged the open problem: no live OIDC bearer token to establish `sub` off a physical medium.
@@ -12,21 +12,23 @@ A long design-brainstorm session (no code touched — pure `docs/*.md` design pr
 6. **PT/CT swap integrity**: separated "ciphertext integrity" (already free via AES-GCM) from "content authenticity relative to approval" (the real gap — nothing stopped a wrong/substituted `PT_SPAC` from being wrapped). Fix: an **Approver** role (new Ed25519 signing keypair, deliberately kept separate from `vault_root_key`) signs a salted `kdf.py`-derived commitment at approval time, checked at both emplacement and arming.
 7. **Availability/RTO**: framed as a per-deployment target (RTO), not a universal answer. Broke down the three real variance sources — convening the quorum, share delivery, endgame unlock — each with a rough-quantified 3-option table (mechanics/accessibility/automation/time), tied to CONOPS trading speed against unauthorized-access resistance. Extended `ceremony-formation.md`'s backup-list idea to the operator/custodian roles for *availability* (distinct from the *authorization-sufficiency* argument for single-operator). Patched the swap-integrity check to split into a fast per-arming wrapped-MAC (cheap, every ceremony) versus the slow per-version KDF+signature check (demoted to an optional periodic audit, off the critical path) — the slow Argon2id check would have fought the RTO if re-run every arming.
 8. **Naming, round 2**: settled **`Fielded Prime Element`** for the hardware-embodied instance of the prime-trustee role (device/value parallel to `shardware-token`/`shard`) — landed in `docs/nomenclature.md`, its mirrored skill (`.claude/skills/shardic-nomenclature/SKILL.md`), and `docs/spac-concept.md`.
+9. **White paper v2.0** (`docs/shardic_white_paper.v2.0.md` + pandoc-converted `.docx`, 1,200 lines): distilled the whole thread into an external-facing document, building on the existing v1.2 paper's §1-3 (updating shardic-envelope/ceremony-formation from "proposed" to **Implemented**, since they now are) and adding two new sections — §4 "The SPAC Ecosystem" (PT/CT SPAC, the shardic client module, `Fielded Prime Element`, both `shardware-token` variants, the five-role governance table, RTO/CONOPS trade-offs) and §5 "Notional Missions and Ceremony Lifecycle" (two vignettes at the user's requested depth — a treasury-disbursement scenario and a notional safety-interlock scenario — each walking the full approval→emplacement→ceremony→arming lifecycle against an "as-is" baseline with a protection/safety/assurance comparison table). §6-7 (security discussion, summary) extended to cover the new material. Confirmed scope via a quick poll before writing (two deep vignettes over three-to-four shallow ones; new versioned file over overwriting v1.2).
 
 Also saved two of my own persistent memories (outside git) recording the SPAC vision and that this user reaches for defense/systems-engineering vocabulary (ICD, PAL, CONOPS, RTO, two-person integrity) naturally — for tailoring future sessions, not part of this repo.
 
 ## State at end
 
 - Working tree clean except the pre-existing untracked `localgit.sh` and `note_manual.md` (untouched).
-- All three docs (`docs/shardware-token.md`, `docs/shardware-token-embed-extract.md`, `docs/spac-concept.md`) fully committed and pushed, along with `docs/nomenclature.md` and its skill mirror.
-- No code changes this session — everything is still design-stage, zero implementation.
-- Six commits today: `5ac82e6`, `8bc1323`, `b0944ed`, `7a50813`, `f9480a2`, `67c19fe`.
+- All docs fully committed and pushed: the three `shardware-token`/SPAC design docs, `docs/nomenclature.md` + its skill mirror, and the new `docs/shardic_white_paper.v2.0.md`/`.docx` pair.
+- No code changes this session — everything is still design-stage, zero implementation, including the white paper's SPAC sections (explicitly flagged as proposed throughout, matching how §3.6/3.7 flagged shardic-envelope before it shipped).
+- Seven commits today: `5ac82e6`, `8bc1323`, `b0944ed`, `7a50813`, `f9480a2`, `67c19fe`, `df9e837`.
 
 ## Possibly worth following up
 
-- Only one item in the whole thread is deliberately left open by design, not by oversight: the concrete `LocalUnlockFactor` implementation (PIN vs. key-switch vs. biometric) — intentionally deferred as a per-deployment choice.
+- Only one item in the whole design thread is deliberately left open by design, not by oversight: the concrete `LocalUnlockFactor` implementation (PIN vs. key-switch vs. biometric) — intentionally deferred as a per-deployment choice.
 - `shardware-token.md`'s originally-reserved "hardware-backed key custody" variant (FIDO2/WebAuthn-style, network path unchanged) was never designed this session — still just a forward pointer.
-- Everything in this whole thread is still unimplemented; a natural fork for next session is picking one piece to actually build versus continuing to design.
+- Everything in this whole thread is still unimplemented; a natural fork for next session is picking one piece to actually build versus continuing to design or write up further.
+- The white paper's older siblings (`v.1.2.md`/`.docx`, `v.1.2.1.docx`) were left untouched rather than superseded in place — worth deciding at some point whether v2.0 replaces them as the canonical paper or coexists as a fork.
 - Same longstanding carryovers as prior entries: no automated test suite; Windows `.exe` still CI-only, never hand-verified on real hardware; the 2026-07-21 Actions artifact-storage quota block may still need the user to check `github.com/settings/billing/summary` unless resolved since.
 
 ---
