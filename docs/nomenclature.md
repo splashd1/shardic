@@ -29,7 +29,7 @@ not a reason to merge them.
 | **Envelope** | A pubkey-wrapped payload (`wrap()`/`unwrap()`). The same word covers two payloads traveling in opposite directions — always qualify: **codeword envelope** (combiner→trustee, delivered at vault creation) vs. **shard envelope** (trustee→combiner, sent during recovery, using the "self-addressed envelope" pattern where the combiner's own pubkey rides along bundled inside the codeword envelope it sent). | shardic-envelope |
 | **Fingerprint** | A short hash-based identifier of a public key, for a human to eyeball and compare — never used in the actual cryptographic matching or wrapping logic. | shardic-envelope |
 | **Trustee** | A party holding exactly one codeword (base/pool scheme) or one keypair plus one wrapped codeword envelope (shardic-envelope). | All schemes |
-| **Prime trustee** | shardic-prime only: the single mandatory trustee, required for every recovery regardless of threshold. | shardic-prime |
+| **Prime trustee** | shardic-prime only: the single mandatory trustee, required for every recovery regardless of threshold. The human case by default — see `Fielded Prime Element` below for the hardware-embodied instance of this same role. | shardic-prime |
 | **Pool trustee** | shardic-prime only: any non-prime trustee; `D − 1` of them (the pool threshold) are required alongside the prime. The base scheme has no prime/pool split — all T trustees are peers. | shardic-prime |
 | **Threshold (D)** | Number of codewords/shards required to recover. | All schemes |
 | **Trustees (T)** | Total number of codewords/trustees issued. | All schemes |
@@ -54,6 +54,7 @@ Design-stage terms from `docs/*.md` proposals — no code implements these yet.
 | `CredentialLookup` (`Protocol`) | Resolves a trustee's registered public key. | `docs/pubkey-envelope-plugin.md` |
 | `PublicKeyRecord` | The data shape backing `CredentialLookup`. | `docs/pubkey-envelope-plugin.md` |
 | `EnvelopeDropPoint` (`Protocol`) | Pull-based, single-read delivery point for a wrapped envelope. | `docs/envelope-delivery.md` |
+| `Fielded Prime Element` | Hardware-embodied instance of the prime-trustee role: a fielded system's own PUF/secure-element-sealed `mask`, standing in for a human prime trustee in `reconstruct_secret_with_prime()`. Device/value split parallels `shardware-token`/`shard` — the Element is the device, `mask` is the value it holds. Write lowercase in prose (`fielded prime element`), matching `prime trustee`/`pool trustee`. | `docs/spac-concept.md` |
 
 ## Lifecycle-state adjectives
 

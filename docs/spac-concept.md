@@ -120,8 +120,9 @@ self-tested (`gf256_sss_prime.py:66-79`) and already wired through
 `vault_core_prime.py`'s `try_match_word_prime`/
 `reconstruct_and_decrypt_prime`.
 
-**The fielded system is the prime trustee for its own ceremony** -- a
-hardware one instead of a human one:
+**The fielded system's hardware is a `Fielded Prime Element`** -- a
+hardware-embodied instance of the prime-trustee role, standing in for
+a human prime trustee:
 
 ```
 mask        = the fielded system's own hardware-sealed secret
@@ -149,6 +150,15 @@ only new component is a client module that (a) unseals `mask` locally
 at arming time, (b) collects `pool_threshold` pool shares from human
 trustees, and (c) calls the existing reconstruction function. Nothing
 in `vault_core_prime.py` or `krypt_container.py` changes.
+
+**Naming this role**: a `Fielded Prime Element` is the device, `mask`
+is the value it holds -- the same device/value split already used for
+`shardware-token`/`shard` elsewhere in this project. "Prime trustee"
+in `docs/nomenclature.md` stays the human case by default; a
+`Fielded Prime Element` is the hardware-embodied instance of that same
+role, named distinctly rather than stretching "trustee" (which reads
+as a human party throughout the rest of this project's vocabulary) to
+also mean a piece of silicon.
 
 ### Where DEK reconstruction must happen
 
@@ -501,12 +511,6 @@ something this design should default on its behalf.
 
 ## Open questions / TBD
 
-- **Naming**: "prime trustee" currently implies a human throughout
-  `docs/nomenclature.md`. Whether a hardware-embodied instance of that
-  role deserves its own distinguishing term, or whether "prime
-  trustee" simply generalizes to cover both, is unresolved -- flag for
-  a dedicated nomenclature pass once this stabilizes, rather than
-  deciding unilaterally here.
 - **Concrete `LocalUnlockFactor` choice**: which category (possessed,
   known, or identity-bound) to actually build for a given fielded
   deployment is deliberately left unpicked -- see

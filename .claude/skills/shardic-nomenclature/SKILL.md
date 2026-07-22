@@ -119,7 +119,10 @@ logic.
 **Trustee** — a party holding exactly one codeword (base/pool scheme)
 or one keypair plus one wrapped codeword envelope (shardic-envelope).
 - **Prime trustee** — shardic-prime only: the single mandatory
-  trustee, required for every recovery regardless of threshold.
+  trustee, required for every recovery regardless of threshold. The
+  human case by default — see **`Fielded Prime Element`** below (in
+  "Proposed-but-not-implemented vocabulary") for the hardware-embodied
+  instance of this same role.
 - **Pool trustee** — shardic-prime only: any non-prime trustee; `D − 1`
   of them (the pool threshold) are required alongside the prime.
 - The base scheme has no prime/pool split — all T trustees are peers,
@@ -216,6 +219,13 @@ doesn't assume they're live:
   shape backing `CredentialLookup`.
 - **`EnvelopeDropPoint`** (`Protocol`, `docs/envelope-delivery.md`) —
   pull-based, single-read delivery point for a wrapped envelope.
+- **`Fielded Prime Element`** (`docs/spac-concept.md`) —
+  hardware-embodied instance of the prime-trustee role: a fielded
+  system's own PUF/secure-element-sealed `mask`, standing in for a
+  human prime trustee in `reconstruct_secret_with_prime()`. Device/
+  value split parallels `shardware-token`/`shard` — the Element is the
+  device, `mask` is the value it holds. Write lowercase in prose
+  (`fielded prime element`), matching `prime trustee`/`pool trustee`.
 
 ## Lifecycle-state adjectives
 
