@@ -1,3 +1,26 @@
+# Session notes — 2026-07-21 (Claude Code: diagnosed the ongoing Actions artifact-storage quota block; v1.2.2 still missing its Windows build)
+
+## What happened
+
+Investigated the "Failed to CreateArtifact: Artifact storage quota has been hit" error the user was seeing on repo commits/pushes. Confirmed first that this is purely a GitHub Actions *artifact* storage quota — unrelated to git commit/push data, which is never at risk from it.
+
+Traced it back to the known issue from the 2026-07-17 session (`c1922bf`): that session cleaned up 116 stale artifacts and added `retention-days: 5` to `.github/workflows/build.yml`'s two `upload-artifact` steps, but CI kept failing the same day due to a stated "6-12 hour" quota-recalculation lag, leaving the `v1.2.2` GitHub Release manually created with only the two Linux AppImages — no Windows `.exe`, since that can only be produced by CI. A one-time scheduled check (`trig_01XwUewWkpqMnUj29RkaUtzs`) was left to verify recovery; it fired once on 2026-07-18T02:00 UTC and then retired itself, and nobody had followed up since.
+
+This session re-checked live: `gh api .../actions/artifacts` shows **0 active artifacts and 0 bytes of cache usage across all three of the user's repos** (`shardic`, `abm`, `pixjak`), yet a CI run just before this session (2026-07-21T21:18 UTC) and a manually-triggered retry (`gh workflow run build.yml --ref v1.2.2`, run `29885442053`) both still failed at `upload-artifact` with the identical quota error on both `linux` and `windows` jobs, so `release` never ran again. That's now **5 days** past the fix and well past the documented recalculation window — this is no longer explainable as cache staleness. Given zero measured usage, this looks like an account-level block (most likely a missing payment method, possibly a stuck billing flag) rather than anything fixable from the repo side. `gh api` billing endpoints returned 404/403 with this token's scopes, so it couldn't be confirmed programmatically — flagged for the user to check `github.com/settings/billing/summary` directly.
+
+## State at end
+
+- No code changes this session — investigation and one CI trigger only (`gh workflow run build.yml --ref v1.2.2`, run `29885442053`, failed the same way).
+- `v1.2.2` GitHub Release is still missing its Windows `.exe` assets (only `VaultTool-x86_64.AppImage` / `VaultToolGUI-x86_64.AppImage` attached).
+- Working tree clean (only the pre-existing untracked `localgit.sh`, not touched).
+
+## Possibly worth following up
+
+- **Blocking**: check `github.com/settings/billing/summary` on the `splashd1` account for a payment-method gate or stuck quota flag — once cleared, `gh workflow run build.yml --ref v1.2.2 --repo splashd1/shardic` should let `release` attach the Windows asset to the existing `v1.2.2` release automatically.
+- Same longstanding carryovers as prior entries: no automated test suite; Windows `.exe`s only ever CI-verified, never hand-run on real Windows hardware.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: built the demo video pipeline end to end — CLI recording, live dashboard capture, phase-by-phase interleave)
 
 ## What happened
