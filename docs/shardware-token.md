@@ -11,13 +11,13 @@ ideas share the name and are covered in separate docs:
    transport: a trustee's derived shard travels to the combiner on the
    token itself instead of over the network, for ceremonies that want
    an air-gapped or courier-based delivery step.
-2. **Hardware-backed key custody** (future doc) — a token (smartcard,
-   FIDO2/WebAuthn authenticator) holds the trustee's private key and
-   performs unwrap/derive on-device; the network path
+2. **Hardware-backed key custody** — a token (smartcard, FIDO2/WebAuthn
+   authenticator) holds the trustee's private key and performs
+   unwrap/derive on-device; the network path
    (`/trustees/pending-envelope`, `/trustees/shard-reply`) is
    unchanged. [portable-trustee-client.md](portable-trustee-client.md#browser-xss-residual-risk-resolved-web-is-the-default-documented-risk-with-an-opt-in-alternative)
-   already flags this as an opt-in hardening option; it needs its own
-   design pass, not attempted here.
+   already flagged this as an opt-in hardening option; designed in
+   [shardware-token-key-custody.md](shardware-token-key-custody.md).
 3. **PUF-sealed embed/extract** — a hardened evolution of (1): the
    token is no longer dumb storage but a PUF/secure-element-backed
    device that generates its own keypair, seals the shard
