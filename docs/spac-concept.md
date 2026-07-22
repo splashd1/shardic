@@ -25,6 +25,25 @@ action.
 broader frame -- same relationship as any other plaintext/ciphertext
 in this project, just not assumed to be a file.
 
+## Design priorities
+
+Security and trustworthiness are the top priority throughout this
+design set -- no large or critical gap is acceptable, and every open
+question in this doc and its companions gets resolved (or explicitly
+flagged unresolved) rather than quietly assumed away. A close second,
+not an afterthought: **the ceremony spanning SPAC protection,
+emplacement, and authorized access/execution should stay low-friction
+to actually run.** A mechanism nobody can operate without odious
+overhead doesn't get used correctly, or gets worked around -- which is
+itself a security failure, just a slower-motion one. Every design
+choice in this doc set should be read against both priorities at once:
+prefer the option that doesn't add friction to the *frequent* path
+(arming/recovery) even if it costs a little more at the *rare* one
+(creation/approval/rotation) -- the single-operator and single-local-
+custodian decisions elsewhere in this design set, and the amortized
+approval cost in ["PT/CT swap
+integrity"](#pt-ct-swap-integrity) below, both follow this rule.
+
 ## Prior art: this has a name outside shardic already
 
 - **Permissive Action Links (PAL)** -- the closest real precedent: a
@@ -179,6 +198,154 @@ prevents a deployment from requiring two local factors (e.g. two
 key-switches, PAL/launch-console style) if it wants stronger local
 control than this default.
 
+## PT/CT swap integrity
+
+Two different guarantees are easy to conflate here, and only one of
+them already exists.
+
+**Ciphertext integrity** (already have, free): AES-256-GCM's auth tag
+guarantees `CT_SPAC` decrypts to *exactly* what was originally
+encrypted, or fails loudly -- existing `vault_core.py`/
+`krypt_container.py` machinery already gives this. **Content
+authenticity relative to approval** (the actual gap): nothing today
+confirms that what got encrypted was the *correct, tested, approved*
+`PT_SPAC` in the first place. AES-GCM will happily and correctly
+decrypt a wrongly- or maliciously-substituted value right back out --
+it only promises "you get back what was put in," never "what was put
+in was right." An accidental stale value, or a malicious insider swap
+at wrap time, sails through untouched without a second, independent
+check.
+
+### The fix: a commitment, checked twice
+
+At approval time, once `PT_SPAC` is validated in the real dev/test
+critical-path pipeline:
+
+```
+salt       = random(16-32 bytes)
+commitment = KDF(salt, PT_SPAC)   -- kdf.py's existing Argon2id/PBKDF2
+                                      selection, NOT a bare hash --
+                                      PT_SPAC may be as low-entropy as
+                                      a short arming code, same reason
+                                      codewords never get bare-hashed
+                                      elsewhere in this project
+```
+
+`{salt, commitment}` is safe to store non-secretly -- it doesn't leak
+`PT_SPAC`, the same assumption every codeword-derived KDF output in
+this project already relies on.
+
+Checked at two separate points, not once:
+
+1. **At emplacement** (pre-wrap, by the wrap operator): verify
+   `KDF(salt, PT_SPAC) == commitment` before producing
+   `CT_SPAC = AES-256-GCM(PT_SPAC, DEK)`. Refuse to wrap on mismatch --
+   catches an accidental or malicious substitution at the moment it
+   would happen.
+2. **At arming** (post-decrypt, inside the fielded client module):
+   after reconstructing `DEK` and decrypting, verify
+   `KDF(salt, decrypted_PT_SPAC) == commitment` *again* before handing
+   off to the protected action. This is the check that earns its keep
+   independently of (1) -- it catches anything that changed *between*
+   emplacement and the real ceremony (e.g. a compromised build
+   pipeline re-wrapping a different `CT_SPAC` afterward), which
+   AES-GCM's own integrity check can't see, since a re-wrap with a
+   different plaintext is still a perfectly valid ciphertext.
+
+Fail loudly on either mismatch -- refuse to arm, don't silently
+proceed -- matching this project's existing posture (AES-GCM auth-tag
+failures, `envelope-delivery.md`'s "loud, not silent" re-redemption
+stance).
+
+### Who signs the commitment, and why it can't be the wrap operator
+
+`{salt, commitment}` alone only helps if it's trustworthy -- if
+whoever performs the wrap step can also freely mint a new commitment
+to match whatever they're substituting, the check is circular. This
+needs an **Approver**, a role independent of whoever operates the
+wrap/emplacement step -- the same separation-of-duties instinct used
+for the operator/trustee split elsewhere in this design set.
+
+**Actors:**
+
+| Actor | Role | Distinct from |
+|---|---|---|
+| **Approver** | Validates `PT_SPAC` in the real dev/test pipeline, then commits and signs off on it | The wrap operator -- this separation is the entire point |
+| **Wrap/emplacement operator** | Runs vault creation: generates `DEK`, does the prime/pool split, produces `CT_SPAC` | The Approver, and the `shardic-operator` who later authorizes extraction grants during recovery |
+
+**Protocol, phased:**
+
+```
+Phase 1 -- Approval (Approver, independent of wrap operator, once per
+            PT_SPAC value/version -- not once per arming event, so
+            this cost is paid at the rare step, not the frequent one):
+
+  salt          = random(16-32 bytes)
+  commitment    = KDF(salt, PT_SPAC)
+  approval_cert = Ed25519_Sign(
+      approver_privkey,
+      {salt, commitment, pt_spac_id/version, timestamp}
+  )
+
+  -- the version/timestamp in the signed payload matters beyond the
+  -- commitment itself: it stops an old, otherwise-valid approval_cert
+  -- from being paired with an unrelated later wrap event.
+  -- approval_cert (never PT_SPAC itself) is the durable artifact that
+  -- crosses to the wrap operator; if PT_SPAC also has to physically
+  -- cross that boundary, that hand-off should go through the existing
+  -- shardic_envelope_crypto.wrap() machinery, not a new transport.
+
+Phase 2 -- Vault creation / CT_SPAC generation (wrap operator):
+
+  1. Verify Ed25519_Verify(approver_pubkey, approval_cert) -- refuse on failure
+  2. Verify KDF(salt, PT_SPAC) == commitment                -- refuse on failure
+  3. DEK = random(32 bytes)
+  4. mask, pool_shares = split_secret_with_prime(DEK, pool_threshold, pool_size)  -- unmodified
+  5. CT_SPAC = AES-256-GCM(PT_SPAC, DEK)                                          -- unmodified
+  6. Emplace {CT_SPAC, salt, commitment, approval_cert} as one bundle
+     (all non-secret except CT_SPAC itself, safe to travel together)
+  7. Destroy PT_SPAC, DEK, and any wrap-time copy immediately --
+     extends the existing _secure_delete discipline
+
+Phase 3 -- Arming (fielded client module, every ceremony): reconstruct
+            DEK from mask + pool shares, decrypt to a candidate
+            PT_SPAC, re-run both Ed25519_Verify and the KDF check
+            against the same bundled {salt, commitment, approval_cert}
+            before handing off -- this is what catches anything altered
+            between emplacement and the real ceremony.
+```
+
+### Key sources
+
+- **Approver's Ed25519 signing keypair** -- a genuinely new key type
+  (Ed25519 specifically, since X25519 -- used everywhere else in this
+  project -- is DH-only and can't sign). Touched rarely (once per
+  `PT_SPAC` approval/rotation), so it fits the same low-frequency/
+  high-value tier as `vault_root_key` -- HSM/TPM-sealed, or a
+  human-held smartcard signing key, reusing the same hardware category
+  already canvassed for shardware-tokens rather than inventing new
+  key-custody infrastructure.
+- **`DEK`** -- ephemeral, unchanged from today's model.
+- **`mask`** -- the fielded system's own hardware-sealed secret,
+  unchanged from the fielded-system-binding design above.
+- **Trustee keypairs (X25519)** -- unchanged.
+- **`vault_root_key`/`vault_intermediate_key`** (the extraction-grant
+  chain from `shardware-token-embed-extract.md`) -- **kept deliberately
+  separate from the Approver's key**, even though both are rarely
+  touched and high-value. They answer different questions:
+  `vault_root_key` governs *when pool shares get released* during
+  recovery; the Approver's key governs *whether the right thing was
+  ever wrapped in the first place*. Sharing one key across both would
+  quietly merge two authorities that should stay independent -- the
+  same separation-of-duties instinct as everywhere else in this
+  design set, just applied to keys instead of people.
+
+Procedural alternative, if a cryptographic Approver key isn't worth
+standing up yet: a witnessed, logged approval record substitutes for
+`Ed25519_Sign`/`Ed25519_Verify` -- weaker, cheaper, the same
+cryptographic-vs-procedural choice already offered for trustee
+identity in `shardware-token.md`.
+
 ## Open questions / TBD
 
 - **Naming**: "prime trustee" currently implies a human throughout
@@ -187,13 +354,6 @@ control than this default.
   trustee" simply generalizes to cover both, is unresolved -- flag for
   a dedicated nomenclature pass once this stabilizes, rather than
   deciding unilaterally here.
-- **PT/CT swap integrity**: nothing today verifies that the `CT_SPAC`
-  embedded before fielding actually decrypts to the same `PT_SPAC`
-  validated during dev/test, versus a mistakenly- or maliciously-
-  substituted one. Probably wants an integrity check at emplacement
-  time (e.g. a committed hash of `PT_SPAC`, verified against what
-  recovery ultimately produces) before "arming" is trusted
-  operationally.
 - **Availability/latency requirements**: recovering a file vault
   tolerates a slow, deliberate, hours-long ceremony. Some SPAC
   examples (arming, in-the-moment financial access) plausibly can't --
