@@ -151,6 +151,34 @@ if it becomes a real requirement, it needs its own design (likely a
 separate `CT_SPAC` wrap per unit's own mask, decided at creation time),
 not an extension bolted onto this one.
 
+## Fielded-system local-unlock factor
+
+`mask` being non-extractable from its hardware isn't quite enough on
+its own: a *stolen fielded unit*, run through its own legitimate local
+unseal interface, shouldn't yield `mask` either, independent of
+whether any trustee or operator is involved at all. This needs a
+second, local input in addition to the hardware seal itself -- the
+same `LocalUnlockFactor` Protocol defined in
+[shardware-token-embed-extract.md](shardware-token-embed-extract.md#token-side-possession-factor),
+reused here rather than given a second, parallel definition: a
+discrete, role-transferable possessed (physical key/token) or known
+(PIN/passphrase) input, with identity-bound biometric available as a
+legitimate but tradeoff-aware choice for a fixed, non-rotating
+custodian.
+
+One local custodian is sufficient as designed here, for the same
+structural reason a single remote operator was sufficient for the
+extraction grant
+([shardware-token-embed-extract.md](shardware-token-embed-extract.md#why-single-operator-authorization-is-sufficient)):
+the remote operator and the local custodian are already two
+independent parties covering two different attack surfaces (logical/
+remote vs. physical/local), which is real two-party control before
+either individual step requires more than one person. That said, "one"
+here is a configuration choice, not an architectural ceiling -- nothing
+prevents a deployment from requiring two local factors (e.g. two
+key-switches, PAL/launch-console style) if it wants stronger local
+control than this default.
+
 ## Open questions / TBD
 
 - **Naming**: "prime trustee" currently implies a human throughout
@@ -172,10 +200,8 @@ not an extension bolted onto this one.
   a real constraint on ceremony design (how fast can pool-threshold
   trustees plus an operator realistically convene?) that "unlock a
   sensitive file" never had to answer.
-- **Mask's own local-unlock factor**: whether the fielded system's
-  `mask` needs the same PIN/biometric possession-factor treatment
-  proposed for trustee shardware-tokens, so a *stolen fielded unit
-  alone* -- without any trustee involvement -- still can't yield it.
-  Mirrors an open question in
-  [shardware-token-embed-extract.md](shardware-token-embed-extract.md#token-side-possession-factor),
-  not resolved separately here.
+- **Concrete `LocalUnlockFactor` choice**: which category (possessed,
+  known, or identity-bound) to actually build for a given fielded
+  deployment is deliberately left unpicked -- see
+  ["Fielded-system local-unlock
+  factor"](#fielded-system-local-unlock-factor) above.

@@ -155,12 +155,44 @@ naming their own token.
 
 Per the "mere possession" discussion in the parent doc's threat model:
 the storage-unwrap key should combine the PUF response with a second,
-externally supplied factor -- a trustee-chosen PIN entered locally at
-the token, or a biometric if the hardware supports it (YubiKey
-Bio-style) -- so a stolen token alone, without that factor, yields
-nothing. Add a retry-counter lockout (3-10 attempts) the way
-smartcards/YubiKeys already do, so the factor can't be brute-forced
-offline even if the PUF/KDF math holds.
+externally supplied factor, so a stolen token alone yields nothing.
+This is the same requirement
+[spac-concept.md](spac-concept.md#fielded-system-local-unlock-factor)'s
+fielded-system `mask` needs for the same reason, just applied to a
+trustee's token instead of a fielded unit -- both are instances of one
+shared interface rather than two similar-but-different ones:
+
+```python
+class LocalUnlockFactor(Protocol):
+    """Discrete, role-transferable local-authorization input required
+    -- alongside a valid PUF/hardware unseal -- before sealed storage
+    (a trustee token's shard, or a fielded system's mask) is released.
+    Bound to a category (possessed/known/inherent), never assumed to
+    be exhaustive of examples within a category, so the underlying
+    custodian or trustee can be reassigned/re-provisioned without
+    redesigning this interface. Exactly one discrete input, checked
+    once -- no partial credit."""
+    def check(self) -> bool: ...
+```
+
+Concrete examples, illustrative rather than a closed enum:
+
+| Category | Examples | Note |
+|---|---|---|
+| **Possessed (physical)** | Mechanical key / key-switch; hardware token, smartcard, or dongle | A key-switch has no stored secret at all -- can't be guessed, only lost, copied, or coerced. A digital token/smartcard can carry its own internal PIN-gate and is easier to revoke/reprovision than re-keying a physical lock. |
+| **Known (virtual)** | PIN, passphrase | Cheapest to deploy, weakest to leak or be observed -- a shared secret with no built-in accountability unless paired with logging. |
+| **Inherent (identity-bound)** | Biometric input (fingerprint, iris, etc.) | Strongest single-factor identity binding, but doesn't transfer across a rotating custodian/trustee without re-enrollment -- appropriate when there's genuinely one fixed named holder rather than a rotating role. A legitimate choice, not excluded -- just a tradeoff to pick knowingly. |
+| **Or other** | e.g. a challenge relayed to a separate out-of-band device the holder already carries | `check()` is the only contract; nothing assumes these three categories are exhaustive. |
+
+For a trustee token specifically, one instance suffices per the same
+reasoning as [the operator-authorization
+question](#why-single-operator-authorization-is-sufficient) --
+a single factor here is a configuration choice, not an architectural
+ceiling; nothing prevents a deployment from requiring more than one
+discrete `LocalUnlockFactor` if it wants that. Add a retry-counter
+lockout (3-10 attempts) the way smartcards/YubiKeys already do, so
+whichever factor is chosen can't be brute-forced offline even if the
+PUF/KDF math holds.
 
 ## Physical medium, reconsidered
 
