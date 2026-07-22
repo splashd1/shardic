@@ -3033,3 +3033,6 @@ Commit: `d86e50a` — "Activate CI workflow and wire up tagged Releases"
 - `build_windows.bat` and the Windows side of the CI job remain
   unverified by a human on real Windows; the GitHub Actions
   `windows-latest` runner is the first real exercise of that path.
+## manual note
+set up dupe repo on local synology NAS
+
