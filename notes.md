@@ -1,3 +1,30 @@
+# Session notes — 2026-07-22 (Claude Code: designed the shardware-token hardware-ceremony path and a SPAC generalization thread — three new design docs, not yet committed)
+
+## What happened
+
+A long design-brainstorm session (no code touched) exploring hardware-token alternatives to the network-based shardic-envelope ceremony, escalating in three stages:
+
+1. **Naming**: coined/confirmed **shardware-token** (user's own portmanteau, picked over three alternatives I offered via a quick poll) as the identifier for the whole hardware-token family.
+2. **Physical carriage** (`docs/shardware-token.md`): a dumb-storage USB token just carries an already-`wrap()`-ed `shard_envelope` from trustee device to combiner — no new crypto needed, `submit_shard_reply()` (`app.py:593`) is reused unmodified. Flagged the real open problem: there's no live OIDC bearer token to establish `sub` off a physical medium, so "who does this shard belong to" needs either operator attestation or a trustee-signing keypair.
+3. **PUF-sealed embed/extract** (`docs/shardware-token-embed-extract.md`, supersedes #2's open problem): the token generates its own keypair, seals the wrapped shard via PUF/secure-element fuzzy-extractor tech (cites Intrinsic ID, PUFsecurity, TPM 2.0 sealing as prior art), and only releases it against a vault-signed **extraction grant** — a two-tier `vault_root_key → intermediate_cert → extraction_grant` chain, bound to `token_pubkey_hash` plus a token-generated nonce to block replay. Settled on **single-operator** authorization: the operator can only approve/deny a request a genuine physical token already originated, so the real multi-party control is trustee-token convening itself, not operator count — reuses the existing `initiate_ceremony()` self-dealing check. Token-side PIN/biometric possession factor left open.
+4. **SPAC generalization** (`docs/spac-concept.md`): reframes shardic's protected value as an arbitrary protected *action* (financial access, weapon arming, file unlock, account access — user's examples), not just file decryption — **PT SPAC**/**CT SPAC**, a "shardic client module" at a consuming system's critical-path plugin point, PAL (Permissive Action Links) and DoD two-person-integrity doctrine cited as prior art. The key result: **fielded-system binding needs zero new crypto** — it's `gf256_sss_prime.py`'s existing mask/pool one-time-pad mechanism, just with the fielded system's own hardware-sealed secret standing in as the `mask` (i.e. the fielded system *is the prime trustee* for its own ceremony). Explicitly scoped to one specific piece of hardware, no multi-unit redundancy (mirrors `portable-trustee-client.md`'s lost-device stance: replace means re-provision, not migrate).
+
+Also saved two of my own persistent memories (outside git, in my memory dir) recording the SPAC vision and that this user reaches for defense/systems-engineering vocabulary (ICD, PAL, two-person integrity) naturally — for tailoring future sessions, not part of this repo.
+
+## State at end
+
+- **Three new docs are untracked/uncommitted**: `docs/shardware-token.md`, `docs/shardware-token-embed-extract.md`, `docs/spac-concept.md`. Per the shardic-sync convention this sync only commits `notes.md` itself — decide separately whether/when to commit the docs.
+- No code changes this session.
+- Pre-existing untracked `localgit.sh` and `note_manual.md` still present, still untouched.
+
+## Possibly worth following up
+
+- Commit (or discard) the three new docs above — right now they only exist on this machine's working tree.
+- Each new doc ends with its own open-questions list; live ones worth picking up next: PIN-vs-biometric for the token/mask possession factor, concrete cert encoding (bespoke vs. CWT/JWT-shaped), PT/CT swap-integrity verification, availability/latency needs for time-critical SPACs, and whether "prime trustee" needs a distinct term once it can be hardware-embodied.
+- Same longstanding carryovers as prior entries: no automated test suite; Windows `.exe` still CI-only, never hand-verified on real hardware; the 2026-07-21 Actions artifact-storage quota block may still need the user to check `github.com/settings/billing/summary` unless resolved since.
+
+---
+
 # Session notes — 2026-07-21 (Claude Code: diagnosed the ongoing Actions artifact-storage quota block; v1.2.2 still missing its Windows build)
 
 ## What happened
