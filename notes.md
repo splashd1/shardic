@@ -1,3 +1,29 @@
+# Session notes — 2026-07-23 (Claude Code: built a white-background companion variant of the 7 new v2.0 slides for pasting into a corporate template)
+
+## What happened
+
+User asked for the 7 new v2.0 slides (4.1-4.5, 5.1-5.2, 6.5 — the SPAC/shardware-token/Fielded-Prime-Element material added last session) re-rendered in a "corporate template friendly white format where the elements can be copied over without error." Clarified scope up front via a quick poll: just those 7 slides (not the full 24-slide deck), and "white format" meaning same layout/icons with the background flipped to white, not a from-scratch rebuild on plain PowerPoint placeholders.
+
+Inspected the deck's actual XML structure (`docs/shardic_whitepaper_presentation2.0.pptx`, slide indices 14-20) to understand the color system before touching anything: page background is a per-slide `<p:bg>` navy override (`141B4D`); cards are self-contained dark rounded rectangles (`24316E` fill) with their own icon circles (`263874` blue or `3A2F14` warm-brown variant) and white/light text already contrasted *against the card*, not the page. Icon glyphs turned out to be plain white PNGs on transparent backgrounds sitting on those dark circles — so they needed no recoloring at all, since their contrast comes from the card/circle beneath them, not the page. Only text floating directly on the bare page background (titles, eyebrow labels, intro paragraphs, footer, page numbers) actually needed remapping to dark colors for the white bg to work.
+
+Wrote a python-pptx script (staged in scratchpad, not committed) that: (1) sets each target slide's background to solid white, (2) finds all "container" shapes by fill color (`24316E`/`263874`/`3A2F14`), (3) for every text run, checks bounding-box overlap against those containers — if it overlaps a container, leaves the color alone (already has its own contrast); if it's loose on the page, remaps `FFFFFF→141B4D`, `CADCFC→2E3E6B`, `9FB2E0`/`AEB9DC`→`64708F`, `E7B93E→A3790A` (darkened gold, kept the WCAG-large-text contrast ratio ≥3 in mind rather than eyeballing it) — then deletes every slide outside the target range, leaving a standalone 7-slide file. Verified by rendering all 7 pages to PNG via LibreOffice before finalizing; cards/icons came through untouched as expected, loose text all stayed legible on white.
+
+Committed as `docs/shardic_whitepaper_presentation2.0_white.pptx` (`1258dfb`). Push initially failed on the NAS leg (`Permission denied` — this Bash session hadn't inherited `SSH_AUTH_SOCK` from `~/.bashrc`, since it's non-interactive); re-exported `SSH_AUTH_SOCK=/run/user/1000/keyring/.ssh` in-session and the retry succeeded on both GitHub and the NAS. Same underlying gnome-keyring-agent fix as the prior session, just not yet inherited by every new shell — worth another look if it keeps recurring.
+
+## State at end
+
+- `docs/shardic_whitepaper_presentation2.0_white.pptx` committed and pushed to both GitHub and the NAS as of `1258dfb`. Working tree clean.
+- Kept as a standing companion artifact (user's explicit call), not a throwaway — alongside the navy `2.0.pptx` and the older `1.2.1`/`1.3` versions already in `docs/`.
+- The recolor/extract script lives only in the scratchpad, not committed — same situation as last session's deck-generation script; would need rebuilding if the white variant needs another content pass (e.g. if the navy deck's 7 source slides change).
+
+## Possibly worth following up
+
+- If the navy `shardic_whitepaper_presentation2.0.pptx` slides 15-21 (4.1-4.5, 5.1-5.2, 6.5) are ever edited again, the white variant won't auto-follow — it's a derived snapshot, not generated on demand.
+- `SSH_AUTH_SOCK` still isn't reliably inherited by every non-interactive shell despite the `~/.bashrc` guard from last session — recurred once this session, worked around manually. Worth checking whether Claude Code's Bash tool sources `.bashrc` at all, or needs a different persistence mechanism (e.g. a systemd user environment import) if this keeps happening.
+- Same longstanding carryovers as prior entries: no automated test suite; Windows `.exe` still CI-only, never hand-verified on real hardware; whether to retire the older `1.2.1`/`1.3` deck versions is still an open call.
+
+---
+
 # Session notes — 2026-07-22 (Claude Code: extended the companion deck to v2.0 with the SPAC/shardware-token material, then fixed a broken NAS SSH remote along the way)
 
 ## What happened
