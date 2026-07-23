@@ -1,3 +1,28 @@
+# Session notes — 2026-07-22 (Claude Code: extended the companion deck to v2.0 with the SPAC/shardware-token material, then fixed a broken NAS SSH remote along the way)
+
+## What happened
+
+Two unrelated threads in one session.
+
+**Deck update.** Rebuilt `docs/shardic_whitepaper_presentation1.3.pptx` (17 slides) into `docs/shardic_whitepaper_presentation2.0.pptx` (24 slides), pulling in the new SPAC/shardware-token/Fielded-Prime-Element material from the white paper v2.0 written last session. No generator script existed in the repo from whenever the original deck was built, so this session wrote one from scratch (python-pptx, staged in the scratchpad, not committed) by reverse-engineering the existing deck's exact geometry, palette, and icon set (17 unique icons, deduped from the 34 embedded PNGs) shape-by-shape, then generated 7 new slides in that same visual system: 4.1 SPAC concept (PT/CT SPAC), 4.2 Fielded Prime Element, 4.3 shardware-token variants, 4.4 roles/governance, 4.5 CONOPS/RTO trade-offs, 5.1-5.2 notional missions, 6.5 new security considerations. Also added a 7th Advantages card and 8th Limitations card into empty grid slots on the existing summary slides, fixed several section-number eyebrow labels that had drifted stale from an older white paper draft (e.g. `4.1-4.3`→`6.1-6.3` for the security-discussion slide, `3.5`→`3.6` for shardic-envelope), and updated the title-slide subtitle. Caught one bug the hard way — new slides initially rendered with a white background because per-slide `<p:bg>` overrides (not shape-tree background rects) are how this deck actually sets its navy background, invisible until checked by rendering to PNG via LibreOffice rather than trusting the raw XML. Verified the whole 24-slide deck visually via a contact-sheet render before calling it done.
+
+**NAS SSH fix.** `git push` (dual-pushurl: GitHub + a Synology NAS at `192.168.9.175`) was failing on the NAS leg with `Permission denied (publickey,password)`. Diagnosed in two layers: first, the NAS didn't have the local `~/.ssh/id_rsa.pub` in its `authorized_keys` at all (fixed by the user via DSM's Control Panel → User & Group → Advanced → User Public Key — I don't have NAS credentials and didn't ask for any); second, even after that, pushes still failed because `id_rsa` is passphrase-protected and no `SSH_AUTH_SOCK` was set in this shell, so non-interactive git/ssh couldn't unlock it. Found the desktop's already-running gnome-keyring SSH agent (`/run/user/1000/keyring/.ssh`) already had the key loaded (decrypted once at desktop login) — pointing `SSH_AUTH_SOCK` at it fixed pushes immediately with no new passphrase entry needed. Made it persistent by appending a guarded block to `~/.bashrc` (only sets it if unset and the socket exists), verified with a fresh `bash -ic` shell.
+
+## State at end
+
+- `docs/shardic_whitepaper_presentation2.0.pptx` committed (`32de647`) and pushed to both GitHub and the NAS.
+- `~/.bashrc` updated (outside the repo, not committed) to auto-export `SSH_AUTH_SOCK` for future sessions.
+- Cleaned up both pre-existing untracked scratch files this session: `localgit.sh` (a one-line NAS-push test script) and `note_manual.md` (empty) — both deleted at the user's request. Working tree is clean.
+- The deck-generation script itself lives only in the scratchpad (`/tmp/claude-1000/.../scratchpad/build_deck.py` + `fix_and_finish.py`), not committed to the repo — if the deck needs another content pass later, that script would need to be rebuilt or fetched from this session rather than reused directly.
+
+## Possibly worth following up
+
+- The pre-existing minor footer/text overlap on the "Windows build path not yet verified" Limitations card (present since v1.3, not introduced this session) is still there — cosmetic only, low priority.
+- Whether to retire the older `shardic_whitepaper_presentation1.2.1.pptx`/`1.3.pptx` decks or leave them as historical snapshots alongside `2.0.pptx` is still an open call, same as the white paper's `v1.2.x` siblings flagged last session.
+- Same longstanding carryovers as prior entries: no automated test suite; Windows `.exe` still CI-only, never hand-verified on real hardware.
+
+---
+
 # Session notes — 2026-07-22 (Claude Code: designed the shardware-token + SPAC thread end to end, then wrote a v2.0 white paper distilling it — ten stages, eight commits, everything committed and pushed)
 
 ## What happened
