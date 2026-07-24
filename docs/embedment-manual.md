@@ -1,25 +1,17 @@
-# shardic hardware embedment manual — solution-space draft, rev. 3 (for review)
+# shardic hardware embedment manual
 
-**Status: draft for review, not yet a real doc in the design set.**
-Rev. 2 reworked rev. 1 after review comments: rev. 1 treated each open
-question as an independent per-item default/escalation choice. That
-undersold two things: (a) many of these choices ripple into each other
-rather than being independent toggles, and (b) shardware-token is only
-one branch of the real solution space — pure network delivery (already
-implemented) is a first-class option, not just "the thing you get if
-you skip shardware-token." Rev. 3 sharpens Fork 1's phrasing per
-review: "one specific piece of fielded hardware" is a statement about
-binding *granularity* (per unit), not a cap on deployment volume — see
-below. Two bundles and "ceremony" as the settled term are both
-confirmed as of this revision; open items are narrowed accordingly.
+**Status: adopted.** Promoted from a four-revision review draft; see
+`git log -p` on this file for that history. Rev. 4 (the promotion
+pass) reframed Fork 1's fleet-scale item from a common-vs-discrete
+binary into a cohort-granularity spectrum set at wrap time, and added
+a worked (illustrative) ICD-field sketch to the preamble.
 
 ## Preamble: what shardic is, and where these decisions plug in
 
-**New in rev. 3**, per review request: an integrator opening this
-manual cold needs background before the fork tree makes sense. This is
-a condensed *pointer*, not a clone — full depth stays in the source
-docs cited inline, so this doesn't become a second copy that drifts
-from them over time.
+An integrator opening this manual cold needs background before the
+fork tree makes sense. This is a condensed *pointer*, not a clone —
+full depth stays in the source docs cited inline, so this doesn't
+become a second copy that drifts from them over time.
 
 **What shardic is.** A threshold-recoverable protection scheme: a
 secret is split via Shamir's Secret Sharing (GF(256), byte-wise) into
@@ -99,6 +91,29 @@ chain?), which is the prerequisite for writing that ICD for real.
                                                   implemented)
 ```
 
+**Worked ICD-field sketch (illustrative — not the wire format).** To
+make "what the ICD needs to carry" concrete rather than abstract, here
+is what crosses the shardic-client-module boundary for one path
+through the fork tree below (Bundle B: Fielded Prime Element, grant
+chain, hardware custody). Field names/types are illustrative; the
+actual wire format is still undesigned, per above.
+
+| Direction | Field | Carries |
+|---|---|---|
+| Client module → Fielded Prime Element | `extraction_grant` | `token_pubkey_hash`, `nonce`, `issued_at`, `ttl`, `intermediate_cert_ref`, Approver-chain signature — the two-tier authorization proving this arming was actually approved |
+| Client module → Fielded Prime Element | `local_unlock_assertion` | Result of the `LocalUnlockFactor` check (possessed/known/inherent) — gates whether the mask releases at all, independent of the grant |
+| Fielded Prime Element → client module | `mask` | Released only if both the grant and the local-unlock assertion check out; never leaves the boundary otherwise |
+| Combiner → client module | `pool_shares[]` | Threshold-D trustee shard envelopes, arriving via whichever Fork 2 transport this deployment picked (network/physical/hybrid) |
+| Client module (internal) | `masked_secret` | Reconstructed from `pool_shares[]` via `reconstruct_secret_with_prime()` — never crosses a wire, computed in-process |
+| Client module → consuming system's critical-path point | `DEK` / unlock signal | `masked_secret XOR mask`; what the ICD ultimately hands back to satisfy the protected action |
+| Client module → audit sink | `commitment_check_result` | Fast per-arming wrapped-MAC check against the Approver's swap-integrity commitment (the slow KDF+signature check is a periodic audit, off this critical path per `spac-concept.md`) |
+
+A deployment further along Bundle A (no Fielded Prime Element, no
+grant chain) simply drops the first three rows — the ICD's actual
+shape is a function of which fork-tree branches a given deployment
+takes, which is exactly why this manual determines the *inputs* to
+that design rather than fixing one wire format up front.
+
 Full depth: `README.md` (base scheme, use cases, build/run),
 `CLAUDE.md` (module map, don't-re-break-this invariants),
 `spac-concept.md` (SPAC reframe, client module, Fielded Prime Element,
@@ -147,50 +162,59 @@ Fork 1 — Does the protected action have to be bound to one specific
             unlock; the only checkpoints are the trustee quorum and
             whichever LocalUnlockFactor the custodian supplies.
         → second sub-fork (fleet scale only — moot for a single unit):
-          do fielded units share ONE trustee-submitted secret across
-          the whole fleet, or does each unit get its OWN independent
-          one? Concretely: `reconstruct_secret_with_prime(mask,
-          pool_shares)` recovers `masked_secret`, then XORs the unit's
-          own `mask` to get that unit's real DEK. Because that XOR
-          happens *inside each unit against its own non-extractable
-          mask*, DEK uniqueness per unit holds either way — the choice
-          below is about whether `masked_secret`/`pool_shares` (the
-          trustees' side of the equation) is the same value reused at
-          every unit, or independently generated per unit.
-          - COMMON shares — one Shamir split, one emplacement ceremony,
-            reused/resubmitted at every unit. The same trustees still
-            actively participate at every arming; what's shared is the
-            cryptographic material, not live consent. Buys real
-            efficiency: O(1) provisioning cost regardless of fleet
-            size, and lets one quorum action's product unlock (or be
-            distributed to unlock) many units without re-running a
-            fresh split per unit — the lever a CONOPS needing
-            fast/simultaneous fleet-wide unlock actually wants.
-            Costs compartmentalization: a compromised or coerced
-            trustee quorum is a *reusable* key against every unit whose
-            mask an attacker can separately obtain (physical capture,
-            insider access), not a per-unit-scoped one. Revocation is a
-            mixed blessing to match — replacing a compromised trustee
-            set fixes the whole fleet in one motion, but a single
-            compromise event also endangers the whole fleet in one
-            motion.
-          - DISCRETE per-unit shares — independent `masked_secret`/
-            `pool_shares` generated per unit, even if served by the
-            identical roster of human trustees. Full
-            compartmentalization: a compromise or coercion event
-            against Unit A's quorum submission gives zero leverage
-            against Unit B. Costs O(fleet size) provisioning overhead
-            (a fresh split, Approver sign-off, and wrap per unit) and
-            doesn't by itself speed up simultaneous fleet-wide unlock.
-          Default posture: **discrete per-unit**, for the same reason
+          COHORT GRANULARITY. Concretely: `reconstruct_secret_with_prime(
+          mask, pool_shares)` recovers `masked_secret`, then XORs the
+          unit's own `mask` to get that unit's real DEK. Because that
+          XOR happens *inside each unit against its own non-extractable
+          mask*, DEK uniqueness per unit holds regardless of this
+          choice — what varies is whether `masked_secret`/`pool_shares`
+          (the trustees' side of the equation) is a value shared across
+          several units, or generated fresh for one.
+
+          This isn't a binary. A **cohort** is the set of units
+          provisioned from one Shamir split at wrap time — the same
+          trustee quorum's submission recovers `masked_secret` for
+          every unit in that cohort, then each unit's own mask still
+          scopes the result to itself. Cohort size is a **wrap-time
+          provisioning parameter**, not an architectural fork: the
+          per-unit runtime path (unwrap, mask XOR, arm) is identical
+          no matter how large the cohort is. The two extremes named in
+          earlier revisions — "common" (one cohort = the whole fleet)
+          and "discrete" (cohort size 1, a fresh split per unit) — are
+          just the endpoints of this spectrum, not the only two valid
+          settings. A real deployment can define several discrete
+          *groupings* of commonly-credentialed units within one fleet
+          (e.g. three cohorts of 500 units each, each cohort discrete
+          from the others) rather than picking one extreme fleet-wide.
+
+          The trade curve, as cohort size grows:
+          - **Efficiency and RTO gain** — fewer independent splits to
+            generate/manage (O(number of cohorts), not O(fleet size)),
+            and one quorum submission's product can unlock every unit
+            in its cohort without re-running a fresh split per unit —
+            the lever a CONOPS needing fast/simultaneous multi-unit
+            unlock actually wants.
+          - **Blast radius cost** — a compromised or coerced trustee
+            quorum for a cohort's split is a *reusable* key against
+            every unit in that cohort whose mask an attacker can
+            separately obtain (physical capture, insider access), not
+            a single-unit-scoped one. Revocation is a mixed blessing to
+            match — replacing a compromised trustee set fixes the whole
+            cohort in one motion, but a single compromise event also
+            endangers the whole cohort in one motion.
+
+          Default posture: **smallest cohort your RTO tolerates** — in
+          practice cohort size 1 (fully discrete) unless a named CONOPS
+          driver justifies grouping, for the same reason
           `spac-concept.md` names "no large or critical gap acceptable"
-          as this whole design set's top priority — a reusable
-          fleet-wide unlock key is a serious property to accept
-          silently, especially for PAL-style/arming CONOPS. Common
-          shares are a real, nameable trade a CONOPS can choose into
-          when fleet-wide RTO-at-scale genuinely outweighs
-          compartmentalization (e.g. a large, lower-stakes asset or
-          sensor fleet) — not a default to fall into.
+          as this whole design set's top priority. Group only as large
+          as that driver actually requires (e.g. cohorts sized to a
+          logistics batch or a facility, not the whole fleet by
+          default), especially for PAL-style/arming CONOPS. Fleet-wide
+          common shares remain available as a real, nameable trade when
+          fleet-wide RTO-at-scale genuinely outweighs compartmentalization
+          (e.g. a large, lower-stakes asset or sensor fleet) — it's one
+          point on the spectrum, not a separate option from it.
 
 Fork 2 — Trustee share DELIVERY transport (independent of Fork 1 —
           a Fielded Prime Element's mask is local *by definition*;
@@ -244,13 +268,13 @@ forks above:**
   across however many units are on order, per-unit serial/mask
   tracking, and who curates trust roots across a fleet rather than one
   device — not just a one-off ceremony design exercise.
-- Fork 1's common-vs-discrete trustee-share choice (fleet scale) and
-  Fork 1's grant-chain-vs-local-only choice compound rather than cancel
-  out: common shares plus a grant chain still requires per-unit live
-  authorization even though the trustee-side material is reused, so
+- Fork 1's cohort-granularity choice (fleet scale) and Fork 1's
+  grant-chain-vs-local-only choice compound rather than cancel out: a
+  large cohort plus a grant chain still requires per-unit live
+  authorization even though the trustee-side material is shared, so
   fleet-wide RTO gains come from the *trustee* leg, not the *operator*
-  leg — don't assume choosing common shares alone delivers fleet-wide
-  instant unlock if the grant chain is also in play.
+  leg — don't assume a large cohort alone delivers fleet-wide instant
+  unlock if the grant chain is also in play.
 
 ## Two named default bundles
 
@@ -285,7 +309,7 @@ resistance.
 
 | Axis | Choice |
 |---|---|
-| Fielded binding (Fork 1) | Fielded Prime Element, bound per unit (a fleet of many identically-designed units, each independently emplaced, is the normal way this scales, not an exception to it). Grant chain if a live remote checkpoint on every arming is wanted; local-unseal-only if the fielded unit is in a trusted, access-controlled facility and that checkpoint isn't needed. **Discrete per-unit trustee shares by default** — common shares only as a deliberate, named trade for fleet-wide RTO-at-scale over compartmentalization |
+| Fielded binding (Fork 1) | Fielded Prime Element, bound per unit (a fleet of many identically-designed units, each independently emplaced, is the normal way this scales, not an exception to it). Grant chain if a live remote checkpoint on every arming is wanted; local-unseal-only if the fielded unit is in a trusted, access-controlled facility and that checkpoint isn't needed. **Cohort size 1 (fully discrete) by default** — larger cohorts (up to fleet-wide common) chosen deliberately, sized to whatever CONOPS driver justifies the grouping, not fallen into |
 | Delivery (Fork 2) | Physical carriage for at least the trustees/legs where air-gap matters; hybrid is fine (co-located trustees physical, dispersed ones network) |
 | Custody (Fork 3) | Hardware-backed, on-device-ECDH tier — YubiKey OpenPGP (no ripple) or TPM (fixed machines); PIV only once the P-256 envelope variant is built |
 | LocalUnlockFactor | Possessed (key-switch/smartcard) by default; escalate to dual local custodian for PAL-style two-person local control |
@@ -315,9 +339,9 @@ white paper's own treasury-disbursement vignette already uses.
 | 11 | Attestation-root governance | 3 | — | n/a | Not a tech choice — assign to whoever already governs "who's a legitimate trustee/vendor" org-wide; charter jointly with the Approver-root question `spac-concept.md` flags | |
 | 12 | Re-attestation cadence | 3 | Threat-model tier | n/a | Once, at registration | Hardware-swap is in the threat model → periodic, tied to `intermediate_cert`'s own rotation cadence |
 | 13 | Second envelope-algorithm variant (NIST-curve smartcards) | 3 | — | **Not yet a menu option anywhere.** No design exists. PIV/PKCS#11 isn't actually available until this is designed — flag as a prerequisite, not a pluggable choice, in both bundles. | | |
-| 14 | Common vs. discrete trustee shares across a fielded fleet | 1 (fleet-scale sub-fork) | Fleet-wide RTO-at-scale need vs. compartmentalization requirement | n/a | Discrete per-unit (default) | Fleet-wide simultaneous/rapid unlock genuinely outweighs compartmentalization loss (e.g. large, lower-stakes asset/sensor fleet) → common shares, chosen deliberately, not by default |
+| 14 | Cohort granularity for trustee shares across a fielded fleet | 1 (fleet-scale sub-fork) | RTO-at-scale/provisioning-efficiency need vs. compartmentalization requirement | n/a | Cohort size 1 / fully discrete (default) | Fleet-wide or grouped simultaneous/rapid unlock genuinely outweighs compartmentalization loss for that grouping (e.g. large, lower-stakes asset/sensor fleet, or a logistics-batch-sized cohort) → larger cohort, sized to the driver, chosen deliberately, not by default |
 
-## Settled as of rev. 3
+## Settled
 
 - **Two bundles are enough** to bookend the embedment illustration,
   given the table and driver narrative fill in the space between them.
@@ -329,25 +353,22 @@ white paper's own treasury-disbursement vignette already uses.
 - **Fork 1 binds per unit, not per design** — a fleet of thousands of
   identically-designed units, each independently emplaced with its own
   mask, is the normal manifestation, not an edge case.
-- **Fork 1 now carries a fleet-scale sub-fork**: common vs. discrete
-  trustee shares across a fielded fleet (item 14), defaulting to
-  discrete/compartmentalized, with common shares as a named, deliberate
-  RTO-at-scale trade rather than a fallen-into default.
-- **A preamble now exists** — what shardic is (three layers: base/
-  shardic-prime, shardic-envelope, SPAC), core components and their
-  status, and the shardic-client-module/ICD embedment boundary this
-  manual's fork tree feeds into. Condensed from `README.md`/`CLAUDE.md`/
-  `spac-concept.md` rather than duplicating them.
+- **Fork 1's fleet-scale sub-fork (item 14) is a cohort-granularity
+  spectrum, not a binary** — a wrap-time provisioning parameter (which
+  units share one Shamir split) with identical per-unit runtime code
+  regardless of cohort size. Default posture: smallest cohort the RTO
+  tolerates (cohort size 1 in practice) unless a named CONOPS driver
+  justifies grouping, sized to that driver rather than to fleet-wide.
+- **A preamble exists with a worked ICD-field sketch** — what shardic
+  is (three layers: base/shardic-prime, shardic-envelope, SPAC), core
+  components and their status, the shardic-client-module/ICD embedment
+  boundary this manual's fork tree feeds into, and an illustrative
+  table of what fields cross that boundary for one concrete path
+  (Bundle B). Condensed from `README.md`/`CLAUDE.md`/`spac-concept.md`
+  rather than duplicating them; the ICD's actual wire format is still
+  undesigned — this manual determines its required inputs, not its
+  format.
 
-## Open questions for you
-
-1. Does the new fleet-scale trustee-share sub-fork (item 14) land
-   right — both the mechanism (shared `masked_secret` + per-unit mask
-   still yields per-unit DEK uniqueness) and the default-to-discrete
-   call? Or should the default lean the other way for some CONOPS
-   tiers this draft isn't distinguishing yet?
-2. Does the preamble give an integrator enough to orient before hitting
-   the fork tree, or does it need more (e.g. an actual worked ICD-field
-   sketch, rather than just naming the ICD as undesigned)?
-3. Anything else before this becomes the backbone of the real
-   embedment manual?
+This manual is adopted as the backbone for hardware-embedment design
+decisions. Deviations should extend the per-axis table above rather
+than fork a new document.
