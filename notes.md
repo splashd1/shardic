@@ -1,3 +1,96 @@
+# Session notes — 2026-07-23 (Claude Code: audited shardware-token open questions, drafted a CONOPS-driven embedment-manual solution space, three review rounds)
+
+## What happened
+
+User asked for an audit of the three `shardware-token*.md` docs'
+open questions — which are resolved by later discussion, and whether
+the rest can be reduced to a vetted, situational decision menu to seed
+a new "shardic hardware embedment manual" for integrators. Verdict:
+none of the shardware-token-specific open questions have been closed
+by later docs — that's by design (`spac-concept.md` and
+`shardware-token-key-custody.md` both state outright that these are
+deliberately left pluggable until a real deployment forces the
+question). What *has* resolved and now forms usable scaffolding:
+combiner discovery, device portability, browser-XSS posture
+(`portable-trustee-client.md`), and the ceremony backup-roster/RTO
+framework (`ceremony-formation.md` + `spac-concept.md`).
+
+Staged the analysis as `docs/embedment-manual-decision-menu-draft.md`
+(untracked — explicit review-draft status, not committed), then
+revised it through three review rounds based on user feedback, each
+time writing straight to the file rather than a live back-and-forth
+(user was in a non-scrollable tmux pane for part of this, then
+explicitly said they prefer the file-based review format even after
+getting a normal scrollable terminal back):
+
+- **Rev. 1**: per-open-question table, one default + escalation
+  trigger per row.
+- **Rev. 2**: reworked after user pushback that (a) choices ripple into
+  each other rather than being independent toggles, and (b)
+  shardware-token is only one branch of a bigger solution space — pure
+  network delivery is a first-class option. Restructured around a
+  4-fork decision tree (SPAC-or-not, hardware-bound-or-not, delivery
+  transport, key custody) plus two named bundles ("Networked Quorum"
+  low-friction default vs. "Air-Gapped / Hardware-Bound Assurance"),
+  with the per-item table demoted to a deviation reference.
+- **Rev. 3**: two more rounds of user feedback. (1) Fork 1's "one
+  specific piece of fielded hardware" phrasing needed to state clearly
+  that this is per-*unit* binding, not a cap on fleet size — a fleet of
+  thousands of identically-designed, independently-emplaced units is
+  the normal manifestation, not an exception; added a new fleet-scale
+  sub-fork (common vs. discrete trustee shares across a fielded fleet)
+  with the actual crypto mechanism spelled out (shared `masked_secret`
+  XORed against each unit's own non-extractable `mask` still yields
+  per-unit DEK uniqueness either way) and a default of discrete/
+  compartmentalized, common-shares as a deliberate named RTO-at-scale
+  trade rather than a fallback. (2) Added a Preamble section — what
+  shardic is across its three layers (base/shardic-prime →
+  shardic-envelope → SPAC), a component-status table, and the shardic
+  client module/ICD embedment boundary (with a small architecture
+  diagram) that the fork tree feeds into — condensed from
+  `README.md`/`CLAUDE.md`/`spac-concept.md` with pointers back rather
+  than duplicating them, and explicit that the ICD's own wire format
+  is still undesigned (this manual determines what it needs to carry,
+  not the format itself).
+
+Also settled, in-passing: two bundles are enough (no third needed);
+and "ceremony" stays as the project's term (real precedent — DNSSEC
+root/PKI/HSM key-signing ceremonies — user agreed it's "uppity but
+apt," no better alternative in hand).
+
+**Aside**: mid-session, user quit Claude Code (tmux) and restarted in
+a plain terminal to get real scrollback; confirmed `claude --continue`
+resumes full session context (conversation, file edits, memory)
+independent of the terminal multiplexer — verified via the
+claude-code-guide agent, then the user tested it live and it worked.
+
+## State at end
+
+- `docs/embedment-manual-decision-menu-draft.md` is **untracked**,
+  deliberately not committed — still an active review draft, not a
+  real doc in the design set yet.
+- Three open questions are in the draft's closing section, explicitly
+  **deferred to next session** at user's request: (1) does the new
+  fleet-scale trustee-share sub-fork's mechanism and discrete-by-default
+  call land right, or should the default differ by CONOPS tier; (2)
+  does the preamble give enough orientation, or does it need a worked
+  ICD-field sketch rather than just naming the ICD as undesigned; (3)
+  anything else before this becomes the real manual's backbone.
+- No other files changed this session; working tree otherwise clean.
+
+## Possibly worth following up
+
+- The three deferred questions above are the immediate next step —
+  once resolved, the draft is ready to become a real
+  `docs/embedment-manual.md` (or similar) rather than a dated scratch
+  file.
+- Same longstanding carryovers as prior entries: no automated test
+  suite; Windows `.exe` still CI-only; the second envelope-algorithm
+  (P-256) variant for NIST-curve smartcards still has no design at all
+  and remains a real prerequisite gap, not a CONOPS-pluggable choice.
+
+---
+
 # Session notes — 2026-07-23 (Claude Code: built a white-background companion variant of the 7 new v2.0 slides for pasting into a corporate template)
 
 ## What happened
