@@ -1,3 +1,32 @@
+# Session notes — 2026-07-23 (Claude Code: committed and pushed the embedment-manual decision-menu draft)
+
+## What happened
+
+Short follow-up to the prior session's draft. User asked where the
+`docs/embedment-manual-decision-menu-draft.md` file was and why it
+hadn't been pushed — explained it was left untracked on purpose
+(explicit review-draft status per the prior session's notes). User
+then said they wanted it available on another machine, so it was
+committed (`c423fe0`, "Add embedment-manual decision-menu draft") and
+pushed to `origin` (both the GitHub and NAS remotes resolve to
+`origin` in this repo's config).
+
+## State at end
+
+- `docs/embedment-manual-decision-menu-draft.md` is now **tracked and
+  pushed** — no longer an uncommitted scratch file. It is still,
+  content-wise, the same review draft from the prior session; the
+  three deferred open questions listed below are unresolved.
+- Working tree clean.
+
+## Possibly worth following up
+
+- The three deferred questions from 2026-07-23's earlier session are
+  still open (see below) — resolving them is what turns this from a
+  committed draft into the real `docs/embedment-manual.md` backbone.
+
+---
+
 # Session notes — 2026-07-23 (Claude Code: audited shardware-token open questions, drafted a CONOPS-driven embedment-manual solution space, three review rounds)
 
 ## What happened
