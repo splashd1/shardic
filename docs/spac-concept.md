@@ -6,6 +6,13 @@ this one isn't scoped to a single mechanism -- it's a reframing of what
 shardic ultimately protects, which the rest of this project's design
 docs should be read against once it stabilizes.
 
+> **Note on downstream sync:** [embedment-manual.md](embedment-manual.md)
+> synthesizes a fork/decision tree from this doc (SPAC bundles, cohort
+> framing, key-custody options). It's a snapshot, not generated —
+> changes here that affect Fork 1/2/3's shape won't auto-propagate.
+> If you revise this doc in ways that touch that framing, check
+> whether embedment-manual.md needs a matching update.
+
 ## The reframe
 
 Everything shipped or designed so far treats the protected value as

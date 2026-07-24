@@ -27,6 +27,12 @@ original design and settled during implementation — each is marked
 > "pool" here for a different thing would create exactly the kind of
 > collision that glossary exists to prevent.
 
+> **Note on downstream sync:** [embedment-manual.md](embedment-manual.md)
+> synthesizes its RTO/backup-roster framework from this doc. It's a
+> snapshot, not generated — changes here won't auto-propagate. If you
+> revise the backup-roster or RTO behavior described below, check
+> whether embedment-manual.md needs a matching update.
+
 ## Where this sits
 
 ```

@@ -10,6 +10,13 @@ variants, this is the narrowest: it changes nothing about the network,
 the combiner, or the ceremony -- only where a trustee's own private key
 lives and where the ECDH half of `wrap()`/`unwrap()` executes.
 
+> **Note on downstream sync:** [embedment-manual.md](embedment-manual.md)
+> synthesizes Fork 2 (key custody) from this doc's on-device-ECDH vs.
+> local-secret-gated-software-key distinction. It's a snapshot, not
+> generated -- changes here won't auto-propagate. If you revise the
+> custody categories or their guarantees, check whether
+> embedment-manual.md needs a matching update.
+
 ## Scope: what changes, what doesn't
 
 Contrast against the other two variants already designed:
