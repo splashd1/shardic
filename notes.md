@@ -1,4 +1,82 @@
-# Session notes — 2026-07-23 (Claude Code: resolved the three deferred embedment-manual questions, promoted the draft to docs/embedment-manual.md)
+# Session notes — 2026-07-24 (Claude Code: downstream-sync notes added to source docs, started an ICD-wire-format design draft)
+
+## What happened
+
+Two threads, both following up on `docs/embedment-manual.md`'s own
+"possibly worth following up" list from the prior session:
+
+1. **Downstream-sync notes.** `embedment-manual.md` synthesizes
+   fork/decision content from `spac-concept.md`,
+   `shardware-token-key-custody.md`, and `ceremony-formation.md` but
+   doesn't auto-follow them. Added a short blockquote note near the
+   top of each of the three source docs pointing back at
+   `embedment-manual.md`, so a future edit there flags a possible
+   downstream update. Committed (`6879ad8`) and pushed to both GitHub
+   and NAS remotes — confirmed dual-push to `origin` is still working
+   from this machine, despite last session's note that only GitHub
+   showed up in `git remote -v`; that discrepancy may have been
+   per-checkout, not a real regression (still unconfirmed on other
+   machines).
+2. **ICD wire-format design draft**, started per the user's choice
+   (offered a choice between designing item #13's P-256 envelope
+   variant or the ICD wire format the embedment manual explicitly
+   left undesigned; user picked the ICD). Wrote
+   `docs/icd-wire-format-draft.md` (untracked, review-draft status,
+   same convention as the embedment-manual draft's own history) with:
+   - Scope: this is the consuming-system ↔ shardic-client-module
+     boundary specifically (per `embedment-manual.md`'s diagram), not
+     client-module ↔ combiner (already designed elsewhere).
+   - Settled: local trusted-channel assumption (if a deployment can't
+     guarantee it, that's external to shardic's scope, not a gap
+     here); one discrete `ArmRequest`/`ArmResponse` call, no session;
+     `ArmRequest` is thin (no credentials/fork-tree material crosses
+     the ICD — that's all resolved inside the client module first);
+     `ArmResponse` has three outcomes (`GRANTED`/`DENIED`/`ERROR`),
+     not two; `unlock_value` is single-use by contract (MUST zeroize,
+     MUST NOT cache/re-arm from a stored value); wire shape is
+     identical across Bundle A/B — that stability is the actual point
+     of designing this now; serialization itself deliberately left
+     open (in-process call vs. JSON, per consuming-system language).
+   - **Multi-function SPAC**, a real addition from user review: one
+     trustee/ceremony/infrastructure set can wrap and embed *multiple*
+     SPACs, each with its own discretely-shared DEK/split, requested
+     and approved by name at arm time — a real efficiency lever,
+     orthogonal to (but analogous to) `embedment-manual.md`'s
+     cohort-granularity axis (item 14: that groups hardware units
+     under one split; this groups protected functions under one
+     trustee/ceremony apparatus). Flagged a ripple this draft doesn't
+     design: `ceremony-formation.md`/the combiner currently assumes
+     one vault = one recovery, and would need a per-function
+     identifier surfaced to the trustee-facing approval UI.
+   - Deferred explicitly, not resolved: **cancel/abandon path** for a
+     slow in-flight `ArmRequest` — user wants a dedicated
+     flowcharting/discussion pass next session before this gets
+     designed. `reason_code` taxonomy is deferred alongside it (a real
+     cancel path needs its own value, e.g. `CANCELLED`; finalizing the
+     list before that lands would mean revisiting it anyway).
+
+## State at end
+
+- `docs/icd-wire-format-draft.md` is **untracked**, deliberately not
+  committed — active review draft, one round of feedback already
+  folded in, paused mid-review at the user's request.
+- The three source-doc downstream-sync notes are committed and pushed
+  (`6879ad8`); working tree otherwise clean except the draft file
+  above.
+
+## Possibly worth following up
+
+- **Next session starts with cancel/abandon flowcharting** for the
+  ICD's `ArmRequest`/`ArmResponse` — user explicitly deferred this
+  rather than let it get designed inline. Once resolved, `reason_code`
+  taxonomy finalization follows directly.
+- The multi-function SPAC ripple into `ceremony-formation.md`/the
+  combiner (per-function identifier at approval time) is flagged but
+  not designed — may deserve its own follow-up thread once the ICD
+  draft settles.
+- Still open from the prior session: item #13's P-256/NIST-curve
+  envelope variant remains an undesigned prerequisite for PIV/PKCS#11
+  custody; no automated test suite; Windows `.exe` still CI-only.
 
 ## What happened
 
