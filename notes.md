@@ -1,3 +1,89 @@
+# Session notes — 2026-07-23 (Claude Code: resolved the three deferred embedment-manual questions, promoted the draft to docs/embedment-manual.md)
+
+## What happened
+
+Direct continuation of the prior two 2026-07-23 sessions — resolved
+the three open questions the rev-3 draft deferred, via a clarifying
+back-and-forth (AskUserQuestion) rather than guessing at a rewrite:
+
+1. **Fleet-scale sub-fork (item 14), reworked.** User's key
+   correction: common-vs-discrete trustee shares isn't a binary. A
+   fleet can have discrete *groupings* of commonly-credentialed
+   CT-SPAC units — some CONOPS want cloned builds sharing one set of
+   trustee shards across a cohort (for RTO and provisioning
+   efficiency), others want fully independent credentials per unit,
+   and real deployments often land on cohorts of intermediate size,
+   not either extreme. Confirmed with the user that cohort membership
+   is purely a **wrap-time provisioning parameter** (which units get
+   issued from the same Shamir split) — zero difference in per-unit
+   runtime code either way. Rewrote item 14 and its "second sub-fork"
+   prose as a **cohort-granularity spectrum** (common and discrete are
+   just its two endpoints), with a trade curve (efficiency/RTO gain vs.
+   blast-radius cost as cohort size grows) and a **soft default**:
+   smallest cohort the RTO tolerates, sized to a named CONOPS driver
+   rather than a flat rule. Updated the fork tree, the ripple-effects
+   bullet, Bundle B's table row, and the per-axis reference table row
+   14 to match.
+2. **Preamble depth.** User wanted more than naming the ICD as
+   undesigned — added a worked, explicitly-illustrative ICD-field
+   sketch (a table of what fields would cross the shardic-client-module
+   boundary for the Bundle B path: `extraction_grant`,
+   `local_unlock_assertion`, `mask`, `pool_shares[]`, `masked_secret`,
+   the DEK/unlock signal, `commitment_check_result`), with a note that
+   Bundle A drops the first three rows. Wire format itself still
+   explicitly undesigned — this sketch shows required *inputs*, not a
+   spec.
+3. **Anything else before promotion?** No — user said promote once 1
+   and 2 landed.
+
+**Promoted the draft**: renamed
+`docs/embedment-manual-decision-menu-draft.md` →
+`docs/embedment-manual.md`, flipped status from "draft for review" to
+"adopted," condensed the rev-1/2/3 history note into one short
+promotion-pass line, retitled "Open questions for you" → folded into
+"Settled" (all three closed), and added a closing line: this manual is
+now the backbone for hardware-embedment design decisions, deviations
+extend the per-axis table rather than forking a new doc. Committed
+(`110badf`, "Promote embedment-manual draft: cohort-granularity
+rewrite, ICD-field sketch") and pushed to `origin` (GitHub only this
+session — see below).
+
+## State at end
+
+- `docs/embedment-manual.md` is the adopted manual; the old draft
+  filename no longer exists (only referenced historically in this
+  notes.md file, left as-is). Working tree clean except the
+  pre-existing untracked `docs/shardic_white_paper_20.html` (unrelated,
+  not touched).
+- `git remote -v` now shows **only the GitHub URL** for `origin`
+  (fetch and push) — the dual-pushurl NAS leg mentioned in earlier
+  2026-07-23/07-22 entries is no longer configured on this machine/repo
+  checkout. Not investigated further this session (out of scope); if
+  NAS sync is still wanted, `git remote set-url --add --push origin
+  <nas-url>` would need to be re-added.
+- All three shardware-token-family docs, spac-concept.md, and now
+  embedment-manual.md are stable/adopted; no code changes this
+  session, docs-only.
+
+## Possibly worth following up
+
+- Confirm whether the NAS push URL disappearing from `origin` is
+  expected (e.g. deliberate cleanup on this machine) or an
+  accidental config loss — if the latter, the SSH-agent fix from the
+  2026-07-22/07-23 sessions plus a `git remote set-url --add --push`
+  would restore dual-push.
+- `docs/embedment-manual.md` is now the real design-set doc; if
+  `spac-concept.md`, `shardware-token-key-custody.md`, or
+  `ceremony-formation.md` are revised later in ways that change Fork
+  1/2/3's shape, this manual won't auto-follow — it's a synthesis
+  snapshot, not generated from those docs.
+- Same longstanding carryovers as prior entries: no automated test
+  suite; Windows `.exe` still CI-only; the P-256/NIST-curve envelope
+  variant needed for generic PIV smartcards (item 13) is still an
+  undesigned prerequisite, not a pluggable choice.
+
+---
+
 # Session notes — 2026-07-23 (Claude Code: committed and pushed the embedment-manual decision-menu draft)
 
 ## What happened
