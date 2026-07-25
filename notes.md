@@ -1,3 +1,96 @@
+# Session notes — 2026-07-24 (Claude Code: whitepaper v2.1 fork with new diagrams and a full white-background slide deck rebuild)
+
+## What happened
+
+Separate thread from the ICD-wire-format work below (that stayed paused,
+untouched this session). Started from user-requested tone/structure edits
+to `docs/shardic_white_paper.v2.0.md` (still uncommitted, `M` in git
+status): new §1.6 "Capability Stack" framing the four layers (sharded
+protection → shardic-envelope → ceremony formation → SPAC), and a
+§6.2/§6.4 rewrite establishing that synthetic codeword mode becomes the
+baseline once shardic-envelope removes the memorability constraint. Two
+bracketed rework instructions the user hand-inserted directly into the doc
+were then resolved: an Appendix A (full SSS explainer, reproduced from
+`sss_explained_for_shardic.md`) and a §6 preamble scoping the
+codeword-strength discussion to the base (non-envelope) scheme.
+
+User then forked the reviewed v2.0 draft into two untracked files (both
+**uncommitted**): `docs/shardic_white_paper.v2.1.md` (public/marketing
+version — minor §4 SPAC-status softening) and
+`docs/shardic_design_white_paper.v2.0.md` (kept for internal/debatable
+design discussion, currently byte-identical to v2.0.md — divergence is
+future work, not started).
+
+1. **v2.1 docx** — plain pandoc conversion, `docs/shardic_white_paper.v2.1.docx`.
+2. **Diagrams**: restored the 5 pre-existing §3.1–3.5 pipeline diagrams
+   (`docs/media/image1-5.png`) that had been dropped since v1.2, and built
+   3 new ones matching that exact pastel-flowchart style (sampled real
+   fill/border/text colors from the old PNGs): `capability-stack.png`
+   (§1.6), `sss-geometric-intuition.png` (the "one point vs. two points"
+   line-determination illustration, §1.4 + Appendix A.2), and
+   `ceremony-envelope-flow.png` (§3.7). All 8 embedded into v2.1.md and
+   the regenerated docx; verified via LibreOffice→PDF→PNG render that
+   nothing overflows page margins.
+3. **Full slide deck rebuild**: `docs/shardic_whitepaper_presentation2.1_white.pptx`
+   (new, 25 slides). Reverse-engineered the exact navy→white transform
+   used for the existing 7-slide companion deck
+   (`shardic_whitepaper_presentation2.0_white.pptx`) by diffing slide XML
+   pairs — cards/badges/icons stay untouched, only text floating directly
+   on the page background gets recolored (`FFFFFF→141B4D`,
+   `CADCFC→2E3E6B`, `AEB9DC→64708F`, `E7B93E→A3790A`) — validated the
+   geometric on-card/on-bg classifier against all 7 known-good pairs
+   (zero mismatches) before applying it to the other 17 navy slides.
+   Along the way, found and fixed two bugs the validation set didn't
+   cover: the title slide has its own full-slide background *shape*
+   separate from the standard `<p:bg>` property, and the deck actually
+   uses two different navy shades as slide backgrounds (`141B4D` and
+   `1E2761`), not one. Added a new native-shapes slide 6 ("1.6 — The
+   Capability Stack", 4-layer stack with status badges, matching the
+   deck's visual system rather than embedding a raster image), inserted
+   after "1.4 — The Intuition", with every subsequent slide's hardcoded
+   footer page-number renumbered. Also bumped the title slide to v2.1 and
+   added a synthetic-baseline note to the codeword-modes slide (now
+   slide 12). Full deck re-rendered and spot-checked slide-by-slide.
+
+## State at end
+
+- **Nothing from this session is committed** — user ended with "sync for
+  quitting" before a commit request. Working tree has: `M
+  docs/shardic_white_paper.v2.0.md`, and untracked
+  `docs/shardic_white_paper.v2.1.{md,docx}`,
+  `docs/shardic_design_white_paper.v2.0.md`,
+  `docs/shardic_whitepaper_presentation2.1_white.pptx`,
+  `docs/media/{capability-stack,ceremony-envelope-flow,sss-geometric-intuition}.png`.
+- `docs/shardic_whitepaper21.html` also appeared untracked mid-session,
+  not created by Claude — presumably a user export from LibreOffice
+  (both `presentation2.0*.pptx` files were open live in Impress at
+  session start; one closed partway through, confirmed via `.~lock`
+  files and `pgrep`). Left untouched.
+- `docs/icd-wire-format-draft.md` from the prior session is still
+  untracked and untouched — cancel/abandon flowcharting still pending,
+  see below.
+
+## Possibly worth following up
+
+- **Nothing from today is committed yet** — next session (or later this
+  one) should confirm with the user whether/what to commit: the v2.0.md
+  edits, the v2.1 fork files, the new media, and the new pptx are all
+  independent-ish and the user may want them split across commits rather
+  than one bundle.
+- `docs/shardic_design_white_paper.v2.0.md` is a placeholder fork,
+  currently identical to v2.0.md — the "keep internal debatable/open
+  topics" divergence hasn't actually been written yet.
+- The existing `shardic_whitepaper_presentation2.0.pptx` (navy) and
+  `..._2.0_white.pptx` (7-slide companion) are now superseded in content
+  by the new 2.1 deck but weren't deleted or marked deprecated — worth a
+  decision on whether to retire them.
+- Cancel/abandon flowcharting for the ICD's `ArmRequest`/`ArmResponse`
+  (deferred last session) still hasn't happened — user said they'd
+  return to "lingering embedment driven discussions" after the doc work,
+  which didn't happen this session either.
+
+---
+
 # Session notes — 2026-07-24 (Claude Code: downstream-sync notes added to source docs, started an ICD-wire-format design draft)
 
 ## What happened
