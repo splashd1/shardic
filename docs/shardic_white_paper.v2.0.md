@@ -42,6 +42,12 @@ generalization makes possible. Section 6 extends the security
 discussion to the new material; Section 7 restates what this design
 guarantees and what remains explicitly open.
 
+Read end to end, the design is best understood as four layers, each
+built on top of the last without altering what the layer below it
+guarantees: sharded protection, shardic-envelope, ceremony formation,
+and SPAC. §1.6 states that stack explicitly before the paper works
+through it section by section.
+
 Everything described from Section 4 onward is a **design proposal**,
 not shipped functionality — flagged as such throughout, in the same
 spirit as §3.6/§3.7 flagged shardic-envelope before it shipped.
@@ -237,7 +243,7 @@ applied independently to each byte of the DEK — the same idea above,
 made precise and computable. §3.2 picks up exactly there. For a
 complete, standalone treatment — including the exact polynomial
 construction and why the arithmetic runs over GF(256) instead of real
-numbers — see [`docs/sss_explained_for_shardic.md`](sss_explained_for_shardic.md).
+numbers — see Appendix A.
 
 ## 1.5 From Data to Capability: A Preview
 
@@ -254,6 +260,47 @@ document, an account credential — of which "decrypt this archive" is
 the narrowest possible case. Sections 2–3 describe the mature core
 exactly as it exists today; readers only interested in the file-vault
 tool can stop at the end of §3.
+
+## 1.6 The Capability Stack: How the Layers Build on Each Other
+
+It's worth naming the stack explicitly before working through it
+section by section, since each layer changes what's actually possible
+without invalidating anything the layer beneath it guarantees:
+
+1. **Sharded protection** (§1–§3.5, implemented). The core guarantee: a
+   secret is split so that no fewer than D of T independently held
+   shares can ever reconstruct it, and below that threshold, zero
+   information about the secret exists to extract. This alone is
+   sufficient for the personal, estate, and business scenarios in
+   §1.3 — a family splitting a password manager's master key, a
+   company escrowing a root credential — using the three codeword
+   modes described in §6.2.
+2. **shardic-envelope** (§3.6, implemented). Wraps each trustee's
+   codeword in public-key encryption under a keypair the trustee
+   already controls, removing the human-memorability ceiling that
+   otherwise caps how strong an individual codeword can practically be
+   (§6.2 revisits what this changes about codeword mode selection in
+   §6.4).
+3. **Ceremony formation** (§3.7, implemented). Turns "who holds a
+   codeword" from an ad hoc, once-per-vault trust decision into a
+   tracked, repeatable process: candidate trustees are registered
+   against an identity provider, a specific quorum is selected and
+   invited for a given vault, declined or timed-out slots backfill
+   automatically, and delivery of each wrapped codeword is a
+   single-read, addressed event rather than an out-of-band handoff.
+4. **SPAC** (§4–§5, design proposal). Generalizes the protected value
+   itself from "a file's plaintext" to any enabling code for a
+   protected capability, and generalizes the ceremony from one fixed
+   shape into something tailorable per deployment — which trustees,
+   which local-unlock factors, which RTO — to fit the CONOPS and
+   embedment environment of a specific client system.
+
+Each layer is a strict superset of the guarantees below it: nothing at
+layer 2 weakens layer 1's information-theoretic threshold, and nothing
+at layer 4 weakens layer 2 or 3's already-implemented mechanics. A
+deployment can stop at any layer and still have a complete, sound
+system — layer 4 is simply where this paper's remaining open work
+lives.
 
 # 2. Concept of Operations
 
@@ -633,10 +680,7 @@ itself. §4 builds directly on top of this ceremony-formation machinery
 
 # 4. The SPAC Ecosystem: Extending shardic Beyond File Decryption
 
-**Status: design proposal.** Everything in this section, unlike §1–§3,
-describes a proposed extension with no reference implementation yet —
-`docs/spac-concept.md`, `docs/shardware-token.md`, and
-`docs/shardware-token-embed-extract.md` in the project repository are
+**Status: design proposal.** shardic's protection can be extended beyond the demonstrated file protection and supporting shardic-envelope ceremony that has been fielded to deliver a much more critical level of protection at system level.This section, moves beyond the fielded capabiility of §1–§3. shardic Protected Action Code (SPAC) describes a proposed extension that is targeting the flexibility to be embeddable in a variety of clients. As such there is no reference implementation yet —`docs/spac-concept.md`, `docs/shardware-token.md`, and`docs/shardware-token-embed-extract.md` in the project repository are
 the design record this section distills into narrative form. Nothing
 here is a claim about present functionality.
 
@@ -843,11 +887,10 @@ trade.
 
 **Status: illustrative, notional.** Both vignettes below are
 constructed examples, not descriptions of any real system or
-deployment, intended to walk the full SPAC lifecycle — approval,
+deployment. They're intended to walk the full SPAC lifecycle — approval,
 emplacement, fielded operation, ceremony formation, and arming — against
 a concrete "as-is" baseline. Numeric trustee counts and thresholds are
-illustrative choices, not recommendations for any specific real-world
-case.
+for illustration.
 
 ## 5.1 Vignette A: Escrowed Authorization of a High-Value Treasury Disbursement
 
@@ -968,6 +1011,19 @@ and every secret value is zeroized immediately after.
 
 # 6. Security Discussion
 
+§6.1–§6.3 below characterize codeword strength as it applies to the
+base, human-facing shardic tools described in §1–§3.5 — the case where
+a trustee actually generates, recalls, or transcribes their own
+codeword by hand, and where this analysis stays directly relevant for
+anyone using the base scheme on its own. Once a deployment adopts
+shardic-envelope, ceremony formation, or SPAC (§3.6 onward), this line
+of discussion becomes largely moot: an envelope-delivered codeword is
+never memorized, so it can be generated with entropy on par with
+ordinary cryptographic key material rather than being bounded by what
+a human can recall. §6.1–§6.3 are retained here because the base
+scheme remains a fully supported, standalone capability in its own
+right; §6.4 states the envelope-era amplification explicitly.
+
 ## 6.1 Two Different Kinds of Strength: Key Length vs. Trustee Threshold
 
 It is worth being explicit about which parts of this design are
@@ -997,7 +1053,12 @@ other.
 ## 6.2 Codeword Modes: Security and Usability Trade-offs
 
 Three codeword generation modes are available, trading recall
-difficulty against density of entropy per character:
+difficulty against density of entropy per character. This trade-off is
+the original underpinning of codeword-based share protection, and it
+remains exactly the right toolkit for the personal and business
+scenarios in §1.3, where a trustee is genuinely expected to memorize or
+hand-transcribe their own codeword. §6.4 revisits which mode is the
+better default once that assumption no longer holds.
 
 #### Memorable mode (default)
 
@@ -1058,10 +1119,20 @@ shapes §6.2 entirely: a codeword that only needs to survive one local
 decryption, immediately before use, can be made arbitrarily long and
 high-entropy with no usability penalty at all, pushing each individual
 codeword's computational security arbitrarily close to §6.1's
-information-theoretic guarantee. That gain relocates rather than
-eliminates the trust dependency: the trustee's private key becomes a
-new single point of failure per share, and credential resolution
-introduces a new trust boundary of its own. Ceremony formation's
+information-theoretic guarantee. Because memorability was the *only*
+reason §6.2 traded density for recall, that trade stops applying the
+moment a codeword is never recalled by a human at all: **synthetic
+mode — the densest bits-per-character of the three, and previously the
+least usable — becomes the natural baseline for any envelope-provisioned
+trustee.** Memorable and dictionary mode remain the correct choice
+specifically where a human still holds their own codeword in their
+head or on paper — the standard personal and business deployments of
+§1.3 — but they are no longer the default assumption once §3.6 is in
+play; mnemonic effort simply stops being a variable worth optimizing
+for. That gain relocates rather than eliminates the trust dependency:
+the trustee's private key becomes a new single point of failure per
+share, and credential resolution introduces a new trust boundary of
+its own. Ceremony formation's
 separation-of-duties enforcement (§3.7) directly mitigates one specific
 instance of this: an operator who forms a ceremony cannot also
 self-select as one of its trustees, closing off the most direct form of
@@ -1198,3 +1269,88 @@ protected action's enabling code: no fewer than D independently held
 contributions will ever bring that value into existence, and that
 guarantee does not degrade, weaken, or silently fail under any of the
 failure modes considered in its design.
+
+# Appendix A: Shamir's Secret Sharing, Explained
+
+§1.4 and §3.2 walk through Shamir's Secret Sharing (SSS) at the depth
+needed to follow the rest of this paper. This appendix is the complete,
+standalone treatment those sections point to — the same source
+document maintained in the project repository as
+[`docs/sss_explained_for_shardic.md`](sss_explained_for_shardic.md),
+reproduced here in full so the paper is self-contained.
+
+## A.1 The Problem It Solves
+
+Say you have a secret — a key, a password, a number — and you want to split it among several people so that:
+
+- Any **D** of them together can reconstruct it exactly.
+- Any group of fewer than **D** learns *nothing* about it, not even a probabilistic edge.
+
+That's a **(D, T) threshold scheme**: T total shares, D required to recover. Shamir's Secret Sharing (SSS), published by Adi Shamir in 1979, solves this using a simple fact from algebra: **a polynomial of degree D−1 is uniquely determined by D points, and completely undetermined by any fewer.**
+
+## A.2 The Intuition, Before the Math
+
+It's worth seeing *why* this works before the formula, because the obvious first guess at "splitting a secret into pieces" isn't it, and doesn't have the properties above.
+
+**The obvious guess, and why it falls short.** Imagine cutting a secret key into equal chunks and handing one chunk to each trustee — or the slightly cleverer version, XOR-splitting, where each share is random and the last one is defined so that all of them XOR back to the key. Both can be made information-theoretically sound in the narrow sense that holding fewer than all the pieces reveals nothing. But both share the same structural flaw: they are **all-or-nothing** schemes. Reconstruction needs every single piece, with no way to ask for "any D of T." Lose one trustee, permanently, and the secret is gone forever — exactly the fragility a threshold scheme exists to avoid.
+
+**The actual idea: hide the secret as a point only enough hints can locate.** Picture the secret not as a string of bytes but as a single point on a graph — specifically, where a straight line crosses the vertical axis. Draw that line so it also happens to pass through T other points, one assigned to each trustee. Handing a trustee "their" point tells them nothing on its own: infinitely many different lines pass through any single point, each crossing the axis somewhere completely different, so *every* possible secret remains equally possible. But hand over any **two** trustees' points together, and there is exactly one straight line that passes through both of them — which means there is exactly one place it crosses the axis. Two points determine a line; that's what makes D = 2 work.
+
+Raise the threshold to three, and the trick generalizes: instead of a straight line, use a curve with one more bend (a parabola), which takes three points to pin down uniquely rather than two. One or two points still leave every possible secret equally plausible — the curve simply isn't determined yet. This is the general pattern: a threshold of D is implemented as a curve that requires exactly D points to fix, with T points handed out, one per trustee, all lying on that same curve. Because the curve only needs *any* D of its T points — not a particular D, and not all T — the scheme absorbs losing up to T − D trustees, something an all-or-nothing chunk or XOR split can never offer.
+
+That curve is a polynomial. The next section makes it precise.
+
+## A.3 The Precise Construction
+
+You already know the geometric version from precalculus: two points determine a line (degree 1), three points determine a parabola (degree 2). In general, **D points determine a unique polynomial of degree D−1** — no more, no fewer. Shamir's insight is to hide the secret as the *constant term* of such a polynomial, then hand out points on its curve as shares.
+
+1. To split a secret `S` into T shares with threshold D, build a polynomial of degree D−1:
+
+   `f(x) = S + a₁x + a₂x² + ... + a_(D-1)x^(D-1)`
+
+   where `a₁, ..., a_(D-1)` are **random coefficients**, and the constant term is the secret: `f(0) = S`.
+
+2. Generate T shares by evaluating this polynomial at T distinct nonzero x-values:
+
+   `share_i = (i, f(i))` for `i = 1, 2, ..., T`
+
+3. Distribute one `(x, f(x))` point to each of the T trustees.
+
+**Reconstruction:** given any D of these points, you can fit the unique degree-(D−1) polynomial that passes through them, using **Lagrange interpolation**, and evaluate it at `x = 0` to recover `f(0) = S`.
+
+## A.4 Why Fewer Than D Shares Reveal Nothing
+
+This is the part that separates SSS from "encryption" in the usual sense — it's not computationally hard to break with fewer shares, it's **information-theoretically impossible**.
+
+With only D−1 points, there are infinitely many degree-(D−1) polynomials passing through them — one for *every possible value* of `f(0)`. Each candidate secret is equally consistent with the data you have. You haven't narrowed the search space at all; you've learned literally zero bits about `S`. This is a much stronger guarantee than most cryptography offers, where security rests on a hard computational problem (factoring, discrete log) that could in principle be broken by a smarter algorithm or bigger computer. Here, there's no algorithm to break — the information simply isn't present in D−1 shares.
+
+It also means there's no such thing as partial progress. A combination lock rewards partial knowledge — get two of three digits right and you are, in a real sense, close. A threshold secret share does not work that way. D−1 points together don't narrow the secret down to a short list of likely candidates; they leave *every* possible value exactly as plausible as before. There's no "getting warmer," and no way to make attempts and rule out candidates one collusion at a time — the D<sup>th</sup> point doesn't refine the answer, it's the precise moment the answer springs into existence.
+
+## A.5 Why GF(256) Instead of Real Numbers
+
+If you did this arithmetic over the real numbers, you'd run into two problems: fractions creep into Lagrange interpolation, and floating-point rounding would silently corrupt the secret. So SSS is done instead over a **finite field** — a closed, exact number system with no rounding.
+
+Shardic uses **GF(256)**, the finite field with 256 elements, which conveniently maps one field element to exactly one byte (2⁸ = 256). Every arithmetic operation — polynomial evaluation, interpolation — is closed within this system, so shares and reconstructed secrets are exact bytes with no precision loss. This is also *why* GF(256) has a hard structural ceiling: with only 256 possible nonzero x-coordinates (well, 255, since 0 is reserved for the secret's evaluation point), you can't hand out more than 255 distinct shares without either colliding x-values or moving to a bigger field (GF(2¹⁶)) or a prime-field construction. It's not a tunable setting — it's the size of the number system itself.
+
+## A.6 How This Becomes Shardic
+
+Shardic doesn't split your *file* with SSS — it splits the **encryption key**.
+
+1. Your file is encrypted with **AES-256-GCM** under a randomly generated **Data Encryption Key (DEK)**. This is fast, standard symmetric encryption — SSS is never applied to bulk data because polynomial math over GF(256) doesn't scale to megabytes efficiently.
+2. That 256-bit DEK is the "secret" `S` fed into Shamir's construction, split into T shares under threshold D — i.e., any D trustees can reconstruct the DEK; fewer cannot, even in principle.
+3. Each share is further protected by a memorable **codeword**, run through a KDF (Argon2id or PBKDF2) so that possessing the raw share bytes isn't enough — you also need the human-memorized word.
+4. At recovery time, once D correct codewords unlock D shares, Lagrange interpolation reconstructs the DEK, and AES-GCM decrypts the file.
+
+So the security model has two independent layers stacked: **AES-GCM** protects the bulk data computationally (hard to break, but not impossible in principle), while **Shamir's Secret Sharing** protects the *key itself* information-theoretically (impossible to break with insufficient shares, full stop, regardless of computing power).
+
+## A.7 Where Shardic Extends the Textbook Scheme
+
+A few things shardic adds on top of vanilla SSS that are worth knowing, since they're not part of Shamir's original 1979 construction:
+
+- **Zero-leakage indexing**: normally you'd store metadata mapping "codeword A → share 3" for lookup convenience. Shardic doesn't — it brute-trials each entered codeword against all unmatched share records, using the AES-GCM authentication tag as a correctness oracle. This means the metadata file itself leaks no information about which codeword belongs to which share, closing a side-channel that a naive implementation would otherwise expose.
+- **shardic-prime**: a variant that designates exactly one trustee as the *mandatory prime trustee* — reconstruction fails without their codeword specifically, no matter how many of the remaining pool trustees are gathered. This isn't native to pure threshold SSS (which treats all D-of-T combinations as equally valid) and requires an additional constraint — a one-time-pad-style mask layered over the ordinary Shamir split — on top of the polynomial construction.
+- **Entropy transparency**: the system warns rather than silently degrades if your chosen KDF parameters or codeword strength fall below a safe threshold — a UX layer around the crypto, not a change to the math itself.
+
+## A.8 The One-Sentence Summary
+
+Shamir's Secret Sharing turns "split a secret among T people, any D of whom can recover it" into a simple geometry fact — a degree-(D−1) polynomial needs exactly D points to pin down — and shardic uses that fact to protect not your file directly, but the single key that unlocks it, so that reconstructing access requires genuine cooperation among trustees rather than trusting any single point of failure.
