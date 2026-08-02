@@ -1,3 +1,44 @@
+# Session notes — 2026-08-02 (web chat: DLT/blockchain-hashgraph business-case digression, tabled)
+
+## What happened
+
+User raised a digression, explicitly framed as brainstorming (not a
+design commitment): how blockchain or hashgraph could complement the
+shardic ecosystem, including SPAC. Discussed as a business-case
+exploration, not scoped or designed. Captured in
+`docs/dlt-integration-brainstorm.md`: the zero-leakage-vs-ledger
+tension as the governing constraint, four candidate fits (ceremony
+formation audit log, SPAC arm/disarm event stream, smart-contract
+combiner alternative, hashgraph-vs-blockchain use-case split), a
+business-case framing (compliance/audit differentiator vs.
+HSM/Vault's centrally-trusted-operator model), and an explicit
+scope-creep guardrail against ever putting GF(256) SSS math or
+cryptographic material (shares, codewords, `unlock_value`) on-chain.
+
+User tabled the discussion after this — explicitly asked to document
+and park it, not continue.
+
+## State at end
+
+- `docs/dlt-integration-brainstorm.md` added, tagged **tabled** status
+  at the top (same "fork point, not a spec" convention as
+  `spac-concept.md`/`shardware-token*.md`).
+- No code touched. No prior in-flight thread (ICD cancel/abandon
+  flowcharting, still deferred per last session) was picked up or
+  displaced by this digression.
+
+## Possibly worth following up
+
+- Cancel/abandon flowcharting for the ICD's `ArmRequest`/`ArmResponse`
+  is still the actual next open thread — deferred twice now, not
+  touched this session either.
+- If DLT work is picked back up later: decide which event layer first
+  (ceremony-formation audit log vs. SPAC arm/disarm stream), and
+  whether a third-party verifier is assumed (internal/external/public)
+  before any protocol/vendor discussion.
+
+---
+
 # Session notes — 2026-07-24 (Claude Code: whitepaper v2.1 fork with new diagrams and a full white-background slide deck rebuild)
 
 ## What happened
