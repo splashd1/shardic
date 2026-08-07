@@ -1,3 +1,30 @@
+# Session notes — 2026-08-07 (Claude Code: SPAC non-bypassable-invocation design discussion, whitepaper v2.2 baseline established)
+
+## What happened
+
+Started by syncing three untracked doc exports to the repo (docx/pptx/html), then moved into a design discussion: how to guarantee a SPAC ceremony is actually *invoked* on an operational path, not just cryptographically sound once invoked (user's framing: an A→B→C→D cycle where C must be non-bypassable). Landed on a "cryptographic bypass vs. topological bypass" distinction, mirroring the paper's existing §6.1 "two kinds of strength" rhetorical pattern. Drafted and added two new whitepaper sections: §4.6 (four notional enforcement patterns, software capability-binding up to physical interlocks, anchored to the existing Fielded Prime Element/PAL material) and §6.6 (which patterns actually reach the same non-bypassable bar §7.2 claims for the threshold math, vs. risk-reduction only).
+
+That surfaced a bigger problem: `SHARDIC_White_Paper_v2.1_with_figures.docx` (the user's stated source of truth) and the `.md`/`.html` siblings had drifted into two divergent branches — the docx had newer SPAC content (Vignettes C/D, §6.5 AI/path-trustee caveats) the md/html lacked, while the md/html had §1.6 (capability-stack framing), Appendix A (SSS explainer), and all 8 diagrams that the docx had silently dropped (despite its "with_figures" filename — it had zero embedded images). User asked to establish **v2.2** as a merged baseline across all three formats. Did a full merge: docx dump → spliced in §1.6/Appendix A from the old md → reinserted all 8 images at their original anchor points → regenerated docx (via pandoc with the old docx as `--reference-doc`) and html from one common `shardic_white_paper.v2.2.md` source.
+
+Along the way, fixed a real rendering bug: pandoc's docx output referenced Word styles (`Compact`, `Table`, `FirstParagraph`, `VerbatimChar`) that didn't exist in the merged stylesheet, silently corrupting 4 tables (§4.4, §4.6, §5.1, §5.2) into flattened borderless paragraph dumps. Fix: post-process the generated docx to remap those onto styles that actually exist (`Normal`, `Table Grid`) — now baked into the regen pipeline for next time.
+
+User then gave a batch of author review comments, all reconciled into `shardic_white_paper.v2.2.md` (and regenerated into docx/html): abstract rewritten to tell the design's genealogy (proof-of-concept math → shardic-envelope → ceremony formation → SPAC) instead of just listing four layers; §4's opening reframed more optimistically ("no practical barriers to implementation" vs. "no reference implementation yet"); §6.1–§6.3 flagged as largely moot once shardic-envelope/DRBG-sourced codewords are in play; §6.5 rewritten end to end; §7.3 updated (codeword-bottleneck caveat, 255-share wording, Windows-build item dropped entirely).
+
+## State at end
+
+- Committed and pushed (both `origin` and the internal ssh remote): three doc-sync commits plus the v2.2 baseline commit. Working tree clean.
+- `docs/SHARDIC_White_Paper_v2.1_with_figures.docx` restored to its true pre-session state (today's §4.6/§6.6 additions now live only in v2.2).
+- New canonical trio: `docs/SHARDIC_White_Paper_v2.2_with_figures.docx`, `docs/shardic_white_paper.v2.2.md`, `docs/shardic_white_paper22.html` — all generated from the same source, in sync.
+- User explicitly deferred rolling this into the pptx deck until they've reviewed the v2.2 docx themselves — **the pptx has not been touched** and is the known next step, at the user's discretion.
+
+## Possibly worth following up
+
+- pptx deck (`shardic_deck_v2_0.pptx` or a new v2.2 version) still needs the SPAC non-bypassable-invocation content and the v2.2 genealogy/abstract framing folded in, once the user signs off on the docx.
+- If more docx/md/html merges happen later, reuse the dangling-style-reference fix (grep for `w:(?:p|r|tbl)Style w:val="..."` against defined style IDs) rather than rediscovering it — it's a pandoc + custom `--reference-doc` interaction, not a one-off.
+- ICD cancel/abandon flowcharting for `ArmRequest`/`ArmResponse` is still the long-deferred open thread from prior sessions — not touched again this session.
+
+---
+
 # Session notes — 2026-08-02 (web chat: DLT/blockchain-hashgraph business-case digression, tabled)
 
 ## What happened
