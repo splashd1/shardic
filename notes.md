@@ -1,3 +1,20 @@
+# Session notes — 2026-08-08 (Claude Code: committed v2.2 slide deck export)
+
+## What happened
+
+Short follow-up session: committed and pushed `docs/shardic_deck_v2_2.pptx` (was untracked at session start, carried over from prior work). No other changes.
+
+## State at end
+
+Working tree clean, pushed to both `origin` and the internal ssh remote.
+
+## Possibly worth following up
+
+- Confirm the v2.2 deck actually reflects the SPAC non-bypassable-invocation content and v2.2 genealogy/abstract framing from the prior session's whitepaper merge — this session only committed the file, didn't audit its contents against that source of truth.
+- Same open threads as before: ICD cancel/abandon flowcharting for `ArmRequest`/`ArmResponse` still deferred.
+
+---
+
 # Session notes — 2026-08-07 (Claude Code: SPAC non-bypassable-invocation design discussion, whitepaper v2.2 baseline established)
 
 ## What happened
