@@ -60,6 +60,10 @@
     img {
       max-width: 100%;
     }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
     h1, h2, h3, h4, h5, h6 {
       margin-top: 1.4em;
     }
@@ -103,8 +107,8 @@
      overflow: visible;
     }
     hr {
-      background-color: #1a1a1a;
       border: none;
+      border-top: 1px solid #1a1a1a;
       height: 1px;
       margin: 1em 0;
     }
@@ -210,10 +214,13 @@ Section 4 generalizes the protected value from “a file” to a shardic
 protected action code (SPAC) — any enabling value for a protected
 capability, not only a decryption target — introduces the Fielded Prime
 Element and shardware-token constructions that make SPAC safe to field
-in hardware-bound deployments, and closes with a design treatment of
-non-bypassable invocation (§4.6): ensuring a SPAC ceremony is not merely
-uncircumventable once invoked, but actually sits on the operational path
-it is meant to gate.</p>
+in hardware-bound deployments, addresses non-bypassable invocation
+(§4.6): ensuring a SPAC ceremony is not merely uncircumventable once
+invoked, but actually sits on the operational path it is meant to gate,
+and closes with a deliberate choice between shardic-envelope and
+memorized-codeword protection for a SPAC’s own trustee shares (§4.7),
+including a field-deployment case where the memorized codeword is the
+better choice.</p>
 <p>Section 5 walks four notional missions through the full ceremony
 lifecycle this generalization makes possible: a high-value treasury
 disbursement (§5.1), a safety-interlock release authorization (§5.2), a
@@ -889,37 +896,37 @@ role can undermine the whole ceremony:</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Role</th>
 <th>Answers</th>
 <th>Held by</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>Trustee (pool)</td>
 <td>Who must jointly agree to recover?</td>
 <td>Ordinary shardic-envelope trustees, unchanged from §3.6–3.7</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Fielded Prime Element</td>
 <td>What binds recovery to one specific piece of fielded hardware?</td>
 <td>The fielded system’s own sealed secret — never a party at all</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Local custodian</td>
 <td>Who is physically present to authorize the fielded hardware’s own
 local unseal?</td>
 <td>Whoever holds the deployment’s chosen possessed (key/token) or known
 (PIN/passphrase) factor — a role, not an identity</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Operator</td>
 <td>Who authorizes a given extraction request?</td>
 <td>A single, on-call shardic-operator-equivalent role, barred from
 authorizing a grant naming their own token</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Approver</td>
 <td>Who attests that the value being protected is the correct, tested
 one?</td>
@@ -1006,14 +1013,14 @@ strongest.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Pattern</th>
 <th>Mechanism</th>
 <th>Bypass Resistance</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>Capability binding</td>
 <td>The ceremony’s protected value is (or unlocks) a value the end state
 structurally requires as an input — a signing key, a decryption key for
@@ -1022,7 +1029,7 @@ proceeding</td>
 <td>Medium: no path to the end state without the value itself, but only
 as strong as where that value is generated and held</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Constrained state machine</td>
 <td>The full operating sequence is modeled as an explicit graph with no
 edge that reaches the end state without passing through the ceremony,
@@ -1032,7 +1039,7 @@ ciphertext</td>
 tampering with the boundary that also protects the cryptographic
 material</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Secure-element-internal sequencing</td>
 <td>The Fielded Prime Element (§4.2) performs the end-state operation
 internally as a side effect of completing the ceremony; the outer system
@@ -1041,7 +1048,7 @@ pass/fail decision to act on</td>
 <td>High: collapses the topological and cryptographic bypass surfaces
 into the same tamper-resistant boundary</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Physical interlock</td>
 <td>The end state’s actuation circuit is physically incomplete until the
 ceremony asserts an unlock signal — a relay, key-switch, or discrete
@@ -1069,6 +1076,93 @@ alone may be sufficient where the consuming system’s own code is already
 tightly controlled and audited, while a safety-critical interlock
 plausibly warrants the strongest tier regardless of that cost. §6.6
 states precisely which guarantee each tier actually delivers.</p>
+<h2
+id="codeword-vs.-shardic-envelope-for-spac-trustee-shares-default-opt-out-and-a-field-case">4.7
+Codeword vs. shardic-envelope for SPAC Trustee Shares: Default, Opt-Out,
+and a Field Case</h2>
+<p>Status: design proposal.</p>
+<p>§3.6 established shardic-envelope as the mechanism that removes the
+memorability ceiling on an individual codeword; a SPAC ceremony is where
+that choice actually matters. Because a SPAC’s protected action can be
+materially more consequential than “a codeword holder gets to read a
+file” — arming a safety-critical system, releasing funds, granting
+account access — a SPAC ceremony’s construction defaults to
+shardic-envelope rather than to a memorized codeword, for the same
+reason stated in the abstract: it gives shard cryptovariables parity
+with the 256-bit DEK they protect, rather than leaving the ceremony’s
+weakest gate roughly 150 bits below every other layer in the same
+construction. Pure-memory codewords remain available — named explicitly,
+not silently deprecated — as a <strong>lower-assurance opt-out</strong>
+for deployments where the trade below is the correct one to make for
+that CONOPS.</p>
+<p>That trade is defensible, not merely tolerated, because the
+DEK/AES-256-GCM layer and the codeword layer are not defending against
+the same adversary:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Adversary</th>
+<th>Search space</th>
+<th>Why the required strength differs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DEK / AES-256-GCM</td>
+<td>Holds only CT SPAC, no other angle of attack</td>
+<td>Full, unstructured 256-bit keyspace</td>
+<td>Nothing else stands between this attacker and the plaintext — the
+only layer that must resist a global keyspace search</td>
+</tr>
+<tr>
+<td>Codeword / share record</td>
+<td>Holds one stolen or leaked share record</td>
+<td>Bounded, structured — a wordlist and word count, Argon2id-stretched
+per guess</td>
+<td>Success yields one D-of-T point, worthless below threshold (§6.1);
+the search is real but bounded and cost-amplified, not global</td>
+</tr>
+</tbody>
+</table>
+<p>Measuring one layer’s required strength against the other’s bit count
+is the wrong comparison — it treats two different problems as one. §6.1
+already establishes that raising T or D does not let any individual
+codeword be weaker, because each share is attacked independently; the
+argument here is narrower and different: a codeword’s own floor should
+be set against what actually threatens it — a targeted,
+Argon2id-stretched guessing attack against a bounded space — not against
+the DEK’s global-search floor. On that basis, <code>--memorable</code>
+mode’s existing ~103-bit default, combined with Argon2id’s
+memory-hardness, is a defensible floor for the opt-out case — not
+because it equals 256 bits, but because 2^100 memory-hard guesses
+already exceeds any realistic attacker’s reach against that specific,
+narrower threat.</p>
+<p>A concrete case where the opt-out is the <em>better</em> choice, not
+merely an acceptable one: a SPAC ceremony’s pool trustee operating in a
+communications-denied or device-hostile field environment — the
+operational context §4.1’s Permissive Action Link precedent originates
+from. A device holding a shardic-envelope-wrapped credential is a
+physical artifact: it can be seized, forensically imaged, or used as
+evidence of a trustee’s role or affiliation independent of whether the
+wrapped envelope inside it is ever actually decrypted. A memorized
+codeword leaves none of that — nothing to seize, image, or subpoena —
+and can be relayed over any channel a trustee has available, including a
+single verbal exchange. It also sidesteps an availability risk unique to
+device custody: hardware surviving intact, undamaged, and un-confiscated
+from emplacement to an unpredictable future moment of use, in exactly
+the kind of environment §4.5 already notes trades availability for
+air-gap independence. PAL-class systems have historically favored
+memorized or verbally-relayed codes for this reason, predating threshold
+cryptography entirely; a SPAC deployment with the same operational
+profile has the same reason to opt out of shardic-envelope’s
+default.</p>
 <h1 id="notional-missions-and-ceremony-lifecycle">5. Notional Missions
 and Ceremony Lifecycle</h1>
 <p>Status: illustrative, notional.</p>
@@ -1139,27 +1233,27 @@ immediately after.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Dimension</th>
 <th>As-is (dual-control app logic)</th>
 <th>shardic-SPAC</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>Protection</td>
 <td>Enforced by software/process; bypassable by whoever administers
 it</td>
 <td>Enforced by mathematics; below-threshold shares carry zero
 information regardless of administrator access</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Safety</td>
 <td>Silent failure modes possible if application logic has a bug</td>
 <td>Fail-loud: AES-GCM authentication rejects any incorrect or tampered
 value outright</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Assurance</td>
 <td>Audit log proves which accounts clicked approve, not which people
 independently chose to</td>
@@ -1222,28 +1316,28 @@ is zeroized immediately after.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Dimension</th>
 <th>As-is (procedural two-person rule)</th>
 <th>shardic-SPAC</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>Protection</td>
 <td>A single coerced/compromised individual with physical access is a
 structural risk</td>
 <td>Mathematically requires genuine independent agreement from D
 distinct trustees, not merely two people in a room</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Safety</td>
 <td>A wrong or substituted code may not be detected until use</td>
 <td>Fail-loud at multiple points: AES-GCM authentication, plus an
 independent approver-signed integrity check before the value is
 trusted</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Assurance</td>
 <td>Paper logs and witness statements, alterable or coercible after the
 fact</td>
@@ -1436,7 +1530,10 @@ credential resolution introduces a new trust boundary of its own.
 Ceremony formation’s separation-of-duties enforcement (§3.7) directly
 mitigates one specific instance of this: an operator who forms a
 ceremony cannot also self-select as one of its trustees, closing off the
-most direct form of operator self-dealing.</p>
+most direct form of operator self-dealing. §4.7 extends this trade-off
+specifically to SPAC ceremonies — including a field-deployment case
+where the memorized-codeword floor is the deliberately preferred choice,
+not merely an accepted compromise.</p>
 <h2
 id="security-considerations-specific-to-spac-path-trustees-and-human-ai-policy-gates">6.5
 Security Considerations Specific to SPAC, Path Trustees, and Human-AI
