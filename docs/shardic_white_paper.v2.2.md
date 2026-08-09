@@ -527,6 +527,26 @@ Put concrete numbers on it: even granting an attacker a wildly generous, deliber
 
 That's the actual basis for the trade: the attacker this layer has to survive was never going to approach the edge of a 2^100 space in the first place, so the nominal gap to 256 bits is not the operative number — time-to-crack against the real, bounded, memory-hard-gated attack is. Sizing the floor larger (more words, higher Argon2id cost) is still worth doing wherever a deployment can absorb the added recall or wall-clock burden, per §6.2/§6.3's tuning guidance — but that's headroom on an already-adequate floor, not a correction applied to an inadequate one.
 
+### Is Eight Real Words a Realistic Memorization Target?
+
+The cryptographic case above only holds together if a trustee can actually retain an 8-word codeword well enough to use it — otherwise the opt-out trades a real security floor for one that quietly erodes as people forget, mistype, or improvise. This is a different, narrower claim than the one this project has already answered in the negative: reaching genuine 256-bit-class entropy from unaided human memory isn't realistic for an untrained person, which is precisely why shardic-envelope exists rather than an argument this section disputes. The `--memorable` default's actual target is roughly 2^100 — 8 real words — a categorically smaller and more ordinary ask.
+
+The relevant memory task is long-term retention through rehearsal, not one-shot recall. A trustee isn't asked to hear eight random words once and immediately recite them back — the discipline more often invoked to dismiss this (Miller's "seven, plus or minus two," a finding about *working memory* holding unrehearsed items for immediate use) doesn't describe what a standing trustee actually does, which is closer to how people already retain a bank PIN, a home alarm code, or a memorized passage: through ordinary, periodic repetition until it consolidates into long-term memory. Real dictionary words help specifically because they're meaningful rather than arbitrary — a trustee can turn eight words into a short mental sentence or image, a natural strategy most people already use unprompted for shorter lists (nobody needs training to remember a five-item grocery list by picturing a scene), categorically different from the deliberate, competition-grade method of loci trained memory athletes use for much longer, meaningless, exact-order sequences.
+
+This word count also isn't a novel claim — it sits inside a range with two decades of real-world practice behind it. Diceware, the direct ancestor of `--memorable` mode's approach, has long recommended picking "the longest passphrase you feel comfortable remembering," suggesting six words as the standard target and, for its own long-term (10+ year) protection case, ten words — explicitly broken into two five-word chunks *for memorization purposes*. Eight real words sits inside that established range, not beyond it.
+
+It's worth addressing the counter-evidence directly, since one well-known precedent points the other way at first glance: BIP39 cryptocurrency wallet seed phrases, whose standard guidance is to write the phrase down — on paper or metal, never digitally — rather than rely on memory, with memorization reserved for edge cases like crossing a hostile border, and even then only paired with a written backup, never as a sole record. That guidance is answering a harder and materially different question than shardic's codeword opt-out faces, on every relevant axis:
+
+| Dimension | BIP39 seed phrase | shardic `--memorable` codeword |
+|---|---|---|
+| Length | 12, 18, or 24 words (128–256 bits) — already past the range this project agrees isn't realistically memorizable | 8 words (~103 bits) — inside diceware's own long-established memorable range |
+| Tolerance for error | Zero — one wrong word typically derives a *different, wrong* wallet silently, often with no error at all | AES-GCM's auth tag detects a wrong guess unambiguously; recovery reports what matched and stops, nothing derives silently |
+| Consequence of a mistake | Total, often-undetected loss of funds | A failed match — the trustee can retry with a corrected phrase; nothing is destroyed or locked out on a wrong attempt |
+| Who must recall it, and how many | The single holder, in full | Any `D` of `T` trustees — this specific trustee's phrase doesn't need to survive alone |
+| Rehearsal expectation | Often set once and not touched for years | A standing trustee role, naturally paired with periodic recall practice as an operational habit |
+
+BIP39's caution is correct advice for the problem it is solving. It doesn't generalize to shardic's codeword opt-out, which targets roughly a third of the word count, fails safely and interactively rather than silently and catastrophically, and only ever needs to be one of several independent contributions rather than a single irreplaceable record. Eight real words, rehearsed the ordinary way a person retains any long-held credential, is a realistic target for the trustee population this opt-out is actually meant for.
+
 # 5. Notional Missions and Ceremony Lifecycle
 
 Status: illustrative, notional.
