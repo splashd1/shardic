@@ -1,3 +1,26 @@
+# Session notes — 2026-08-09 (Claude Code: committed project-wide doc-editing permissions, closed the §4.7 deck gap)
+
+## What happened
+
+Two threads, both following up on prior sessions' open items.
+
+**Project-wide permission pre-approval.** User wanted the doc/pptx-editing tool allowlist (pandoc, zip/unzip, soffice/libreoffice, pdftotext/pdfinfo/pdfimages/pdftoppm, cp, mkdir, ls, grep, sed, cd) to follow the repo to any machine, not stay pinned to one machine's gitignored `.claude/settings.local.json`. Confirmed via `git ls-files`/`.gitignore` that `.claude/settings.json` (project-level) is committed while `settings.local.json` is not — moved the list into the committed file. Polled the user on scope (full list vs. narrower, whether to add `cd`, whether to add `rm`) via AskUserQuestion before writing, since a committed file affects every future session on this repo. `rm` stayed gated per the standing decision from a prior session. Committed `52ddf87`, pushed.
+
+**§4.7 deck gap (the open item flagged at the end of the prior entry below).** Extracted all 28 slides' text from `docs/shardic_deck_v2_2.pptx` and confirmed §4.7 ("Codeword vs. shardic-envelope for SPAC Trustee Shares") was completely absent — zero hits for its adversary-table framing, the "default to envelope for SPAC" argument, or the field/PAL device-seizure case anywhere in the deck. The closest existing material (slide 12, §3.6) covers a different, non-SPAC-specific trade-off and doesn't substitute. Polled the user on remediation scope; they chose adding a full new slide over folding it into slide 12 or just reporting the gap.
+
+Built the new slide via direct pptx XML surgery (installed `python-pptx`/`pillow` into a scratch venv for inspection/verification, not for authoring — the slide itself was hand-built as raw OOXML matching the deck's exact patterns): adapted slide 15's neutral two-card PT/CT SPAC layout (no PowerPoint has "no hierarchy between these" precedent) for the DEK/AES-256-GCM vs. codeword/share-record adversary comparison, picked icons from the deck's existing 29-image icon set (key for the DEK card, person+shield for the codeword card) via a rendered contact sheet, and added a full-width field-case callout box below (adapted from slide 24's callout style). Learned display order is governed entirely by `presentation.xml`'s `<p:sldIdLst>` + `presentation.xml.rels`, not by slide filename — slide29.xml is the new part but displays at position 21. Inserted it there, incrementing the footer page-number text on the seven slides that shifted (old 21-27 → 22-28); the closing slide's non-numeric footer needed no change. Verified via `soffice --headless --convert-to pdf` + `pymupdf` (no `pdftoppm` on this machine) rendering all 29 slides to a contact sheet, plus a `python-pptx` open/parse pass — clean throughout, no overlap, correct order and renumbering. Committed `52d5b06`, pushed.
+
+## State at end
+
+Working tree clean, both commits pushed to `origin/main`. Scratch venv and temp render files were confined to `/tmp/deck_audit`, not left in the repo.
+
+## Possibly worth following up
+
+- The three untracked doc-export files in `docs/` (`shardic_white_paper_20.html`, two `shardic_whitepaper_presentation2.1_white*.pdf`) are still sitting untouched — now carried across at least five sessions. Still worth asking the user whether they're intentional scratch or should be committed/cleaned up.
+- `python-pptx` isn't installed system-wide (this machine is externally-managed; needed a venv). If deck-editing work becomes routine, worth deciding whether to keep improvising a scratch venv each time or document/pin a reusable one.
+
+---
+
 # Session notes — 2026-08-09 (Claude Code: deck vs. whitepaper v2.2 audit, dropped two stale §7.3 bullets from the deck)
 
 ## What happened
