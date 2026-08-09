@@ -1,3 +1,24 @@
+# Session notes — 2026-08-09 (Claude Code: deck vs. whitepaper v2.2 audit, dropped two stale §7.3 bullets from the deck)
+
+## What happened
+
+Followed up on the prior session's open item: audited `docs/shardic_deck_v2_2.pptx` slide-by-slide (extracted all 28 slides' text from the pptx XML) against `docs/shardic_white_paper.v2.2.md`. Overall the deck tracked the whitepaper well — §4.6/§6.6 non-bypassable-invocation slides present and accurate, Vignettes C/D both covered, Windows-build bullet correctly dropped from §7.3, codeword-bottleneck wording updated to "largely moot with shardic-envelope."
+
+Found one real divergence: slide 26 (§7.3, 1 of 2) carried two bullets — "Envelope delivery isn't yet a pluggable backend" and "No browser-based trustee client yet" — that don't exist in either `v2.1.md` or `v2.2.md`'s §7.3 list. Traced them back to the original v2.0 deck; they'd persisted unchanged across every revision since, never mirrored from the whitepaper at any point. User said to drop them.
+
+Did the removal via direct pptx XML surgery (no PowerPoint available): identified all `<p:sp>` text-box shapes and `<p:pic>` icon images belonging to the two bullets (each bullet = 1 icon pic + 4 sp shapes: background box, icon container, title, description), removed all of them, then reflowed the remaining four §7.3 bullets from a 3-wide/2-tall grid into a centered 2×2 grid (recomputed x/y offsets for both the sp shapes and the pic icons — the icons were easy to miss since they're separate `<p:pic>` elements, not nested in the text-box shapes; first pass left orphaned ghost icons at the old positions). Verified with `soffice --headless --convert-to pdf` + `pdftoppm` rendered to PNG before and after — final render is clean, no artifacts, icons correctly centered in each box.
+
+## State at end
+
+Committed as `96b65c4`/rebased to `f591ff0` ("Drop two deck-only §7.3 bullets not present in the v2.2 whitepaper"). Push hit a divergence: another machine had pushed `739ec8e`/`e1e4552` (the §4.7 SPAC work, see previous entry below) to GitHub since this session started, but not yet to the internal ssh/synology remote — the two remotes' `main` had drifted apart independently. Resolved without force-push: rebased local work onto `origin/main` (github), which made `origin` push cleanly, then merged `synology/main`'s stale tip (which had the *same* deck-fix patch but not the §4.7 commits) with `git merge synology/main` — a clean, conflict-free merge since the diff was already present — and pushed once more to bring both remotes to the same commit (`f591ff0`).
+
+## Possibly worth following up
+
+- **User explicitly asked**: next session, check whether `docs/shardic_deck_v2_2.pptx` also reflects the new **§4.7** whitepaper content (codeword vs. shardic-envelope default/opt-out/field case, added in the prior session as `739ec8e`) — this session's audit was done *before* §4.7 landed, so the deck almost certainly doesn't cover it yet. Same pattern as the §4.6/§6.6 gap this session closed: extract slide text, diff against `shardic_white_paper.v2.2.md` §4.7, and check whether a new slide is warranted (the existing 3.6/3.7/4.1-4.6 slides don't currently address the codeword-vs-envelope trustee-share question at all).
+- The three untracked doc-export files in `docs/` (`shardic_white_paper_20.html`, two `shardic_whitepaper_presentation2.1_white*.pdf`) are still sitting untouched — now carried across at least four sessions. Still worth asking the user whether they're intentional scratch or should be committed/cleaned up.
+
+---
+
 # Session notes — 2026-08-08 (Claude Code: SPAC codeword-vs-shardic-envelope design discussion, whitepaper §4.7 added)
 
 ## What happened
