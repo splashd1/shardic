@@ -1,3 +1,21 @@
+# Session notes — 2026-08-09 (Claude Code: recalled codeword-vs-DRBG/bit-strength discussion, open item to deepen WP treatment)
+
+## What happened
+
+Pure Q&A, no code/doc changes this session. User asked whether we'd previously discussed (a) codeword vs. DRBG-generated key for SPAC trustee shares, and (b) rationale for why codeword bit strength isn't a major concern — both were recalled from the 2026-08-08 entry below (the design discussion that produced whitepaper §4.7). Summarized both threads back to the user:
+
+- **Codeword vs. DRBG key**: (1) codewords/envelope aren't substitutes for SSS itself, just for what gates a share's release; (2) a memorized-only codeword can't reach AES-256-class entropy for an "average person" (8-word `--memorable` ≈103 bits vs. 256; BIP39 24-word precedent concludes "write it down"; memory-athlete PAO/loci techniques don't rescue the untrained case); (3) resolved via a threat-model distinction — DEK/AES-256-GCM defends a global unstructured keyspace search, a codeword defends a targeted Argon2id-stretched attack on one stolen share record, so bit-count parity is the wrong comparison; (4) field/PAL case where memorized codewords are strictly *better*: a device holding a shardic-envelope credential is seizable/forensic-imageable, a memorized word is not.
+- **Bit-strength rationale**: the "not a major concern" conclusion *is* item (3) above — it's not that entropy doesn't matter, it's that comparing codeword entropy directly to AES-256 is the wrong frame given the two different adversary models.
+
+User then asked for a note to resume this on another machine, with the goal of updating the whitepaper to reflect the impact of both points **more fully** than the current §4.7 does.
+
+## Possibly worth following up
+
+- **Next session (any machine): revisit `shardic_white_paper.v2.2.md` §4.7** ("Codeword vs. shardic-envelope for SPAC Trustee Shares") with the user — they want the codeword-vs-DRBG-key rationale and the bit-strength/threat-model argument reflected *more fully* than the existing section does. §4.7 currently has the defaults/opt-out framing, the adversary table, and the field case (added `739ec8e`), but per this session the user feels the entropy-comparison argument (stages 2–3 above: the "wrong comparison" framing, BIP39 precedent, PAO/loci dead-end) isn't fully carried into the WP prose yet — confirm scope with the user before editing (expand §4.7 in place vs. new subsection) and remember to regenerate the docx/html + check the deck (`docs/shardic_deck_v2_2.pptx` slide29, added last session) for the same gap once WP text changes.
+- Carried from prior sessions, still open: the three untracked doc-export files in `docs/` (`shardic_white_paper_20.html`, two `shardic_whitepaper_presentation2.1_white*.pdf`) — now six-plus sessions untouched, still worth asking whether intentional scratch or should be committed/cleaned up.
+
+---
+
 # Session notes — 2026-08-09 (Claude Code: committed project-wide doc-editing permissions, closed the §4.7 deck gap)
 
 ## What happened
