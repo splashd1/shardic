@@ -1,4 +1,23 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(pandoc *)",
+      "Bash(zip *)",
+      "Bash(unzip *)",
+      "Bash(soffice *)",
+      "Bash(libreoffice *)",
+      "Bash(pdftotext *)",
+      "Bash(pdfinfo *)",
+      "Bash(pdfimages *)",
+      "Bash(pdftoppm *)",
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(sed *)",
+      "Bash(cd *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
