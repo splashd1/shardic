@@ -1,3 +1,29 @@
+# Session notes — 2026-08-08 (Claude Code: SPAC codeword-vs-shardic-envelope design discussion, whitepaper §4.7 added)
+
+## What happened
+
+Design discussion: for a SPAC ceremony, does it make sense to protect trustee shares with a human-memorized codeword vs. a DRBG-generated key protected by shardic-envelope? Worked through it in stages: (1) codewords vs. envelope aren't substitutes for SSS itself, just for what gates a share's release; (2) whether a memorized-only codeword could ever reach AES-256-class entropy for an "average person" — grounded in the project's own numbers (8-word `--memorable` default ≈103 bits vs. 256), the real-world BIP39 24-word-seed precedent (and its own conclusion: write it down, don't rely on memory), and why memory-athlete techniques (PAO/loci) don't rescue the "average person, no training" case; (3) landed on a threat-model distinction that resolves the apparent gap: the DEK/AES-256-GCM layer defends against a global, unstructured keyspace search, while a codeword defends against a targeted, Argon2id-stretched guessing attack against one stolen share record — different adversaries, so bit-count parity between them is the wrong comparison; (4) a field/PAL-heritage case where memorized codewords are the *better* choice, not just tolerated: a device holding a shardic-envelope-wrapped credential is a seizable/forensic-imageable artifact, which a memorized word is not.
+
+Rolled the conclusion into the whitepaper: added new **§4.7** to `shardic_white_paper.v2.2.md` ("Codeword vs. shardic-envelope for SPAC Trustee Shares: Default, Opt-Out, and a Field Case") — SPAC defaults to shardic-envelope for entropy-footprint parity with the DEK; memorized codewords are an explicit, named lower-assurance opt-out; a threat-model table contrasts the two adversaries; the field/device-seizure case is the worked example. Cross-referenced from the abstract and from §6.4.
+
+Regenerated `docs/SHARDIC_White_Paper_v2.2_with_figures.docx` and `docs/shardic_white_paper22.html` from the updated `.md` via pandoc. Hit the known dangling-Word-style bug again (`Compact`/`FirstParagraph`/`Table`/`VerbatimChar` referencing undefined styles) and reapplied the documented fix (→ `Normal`/`TableGrid`/`DefaultParagraphFont`). Found a **new** regen side-effect worth remembering for next time: using the current docx itself as pandoc's `--reference-doc` makes pandoc carry forward that doc's own 8 embedded images under their old relationship IDs *in addition to* freshly generating a second copy under new IDs — nearly doubled file size (335KB → 610KB) with the old copies completely unreferenced/orphaned. Fixed by stripping the orphaned `word/media/*.png` parts and their `document.xml.rels` entries, confirmed only the new rIds are referenced in the body. Verified the final docx via `soffice --headless --convert-to pdf` (45 pages, §4.7's table renders as a real bordered table, not the old flattened-paragraph corruption) and matched `shardic_white_paper22.html`'s pandoc invocation exactly against the prior file's head/CSS via diff before overwriting.
+
+Committed as `739ec8e` ("Add SPAC §4.7: codeword vs shardic-envelope default, opt-out, field case") and pushed to `origin/main`.
+
+Separately, updated `.claude/settings.local.json` (personal, gitignored) at the user's request to cut down on repeated per-command approval prompts during doc-regen work: added wildcard allows for `pandoc`, `zip`, `unzip`, `soffice`/`libreoffice`, `pdftotext`/`pdfinfo`/`pdfimages`, `cp`, `mkdir`, `ls`, `grep`, `sed`. `git *` was already wildcarded from earlier sessions, so push/commit were already unprompted. Explicitly did **not** add `rm` — flagged it as the one destructive command in the toolset and left it gated; user confirmed leave it out for now. Also explicitly declined the user's broader "any directory/any command" framing in favor of this scoped allowlist, distinguishing it from a `permissions.defaultMode` change (e.g. `bypassPermissions`), which would need its own explicit yes.
+
+## State at end
+
+Working tree: only the three pre-existing untracked files from session start remain (`docs/shardic_white_paper_20.html`, two `docs/shardic_whitepaper_presentation2.1_white*.pdf`) — unrelated to this session's work, still untouched. Everything else (`.md`/`.docx`/`.html` whitepaper trio) committed and pushed to `origin/main`.
+
+## Possibly worth following up
+
+- pptx deck still hasn't absorbed the v2.2 genealogy/abstract framing *or* the newer SPAC sections (§4.6 non-bypassable invocation, now also §4.7) — same open item carried forward from the last two sessions.
+- If a docx regen happens again by hand, remember both fixes together: the dangling-Word-style remap *and* the orphaned-media-from-self-referencing pandoc `--reference-doc` cleanup. Neither is written down anywhere but here and in this session's transcript — worth promoting to a real script or doc note if this keeps happening manually.
+- The three untracked doc-export files sitting in `docs/` have now carried over untouched across at least three sessions — worth asking the user whether they're intentional scratch or should be committed/cleaned up.
+
+---
+
 # Session notes — 2026-08-08 (Claude Code: committed v2.2 slide deck export)
 
 ## What happened
