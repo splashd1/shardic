@@ -1,3 +1,33 @@
+# Session notes — 2026-08-09 (Claude Code: crypto-path doc/WP cross-referenced, §4.8 deck gap closed, DRBG-direct share protection implemented in code)
+
+## What happened
+
+Direct continuation of the same day's prior session (below) — picked up from "sync up," then several threads.
+
+**Cross-referenced crypto-path.md and the WP's Appendix A.** User asked whether the crypto-path doc should be merged into the whitepaper or stay standalone — recommended standalone (different altitudes: WP is concept-level for a mixed audience, crypto-path.md is code-grounded) with a two-way pointer instead of a merge. Added a pointer in each direction. Also, per an explicit ask, expanded crypto-path.md's §4.2 (which had conflated delivery and entropy-source into one axis, mirroring an overclaim the WP itself had already fixed) into §4.2.1/§4.2.2 matching the WP's §4.7/§4.8 two-axis framing, with an illustrative code contrast and the DRBG-forces-envelope-but-not-reverse asymmetry note. Updated the §5 table and §6 reuse notes to match.
+
+**Found and fixed a real regen bug while regenerating the WP docx.** Regenerating `SHARDIC_White_Paper_v2.3_with_figures.docx` after the Appendix A edit reproduced the exact table-flattening corruption from earlier sessions — turned out the "documented fix" for dangling Word styles had a regex bug (didn't tolerate the `w:val="X" />` whitespace variant pandoc actually emits, so it silently remapped zero references every time this was done by hand across multiple sessions). Wrote and tested `docs/tools/fix_docx.py`, a real script instead of a re-typed-by-hand fix, verified via rendered-PDF table-border checks. Also promoted the whole pipeline (plain pandoc, reference-doc pandoc, pptx XML surgery) into a new skill, `.claude/skills/shardic-doc-pipeline`.
+
+**Closed the §4.8 deck gap flagged at the end of the prior session.** Audited `docs/shardic_deck_v2_2.pptx` (30 slides after this) against the v2.3 whitepaper — confirmed §4.7's slide (added two sessions ago) was present and correct, but nothing covered §4.8's entropy-source axis. Added a new slide (display position 22, right after §4.7) crossing both axes as a 2x2 card grid, with the memorized+DRBG-direct cell visually muted (dashed border, warning icon) since that combination is structurally impossible — a DRBG key can't be memorized. Same XML-surgery pattern as prior deck edits (icon reuse, sldIdLst position, footer renumbering), verified via python-pptx + soffice render.
+
+**User interrupted mid-turn: "implement the DRBG-direct path for SPAC."** Real code, not just docs. Added `PROTECTION_KDF`/`PROTECTION_DRBG` to `vault_core_prime.py`: `create_vault_prime()` gained an optional per-trustee `protection_modes` param (omitting it preserves prior behavior byte-for-byte — CLI/GUI unaffected), share records now carry a `"protection"` tag, new `try_match_key_prime()` for raw-key credentials alongside the existing codeword matcher. Wired SPAC's demo ceremony (`demo/combiner/app.py`, `demo/trustee/app.py`) to default to DRBG-direct (`use_codewords=True` opts back to codewords), renamed the envelope wire field `codeword_envelope` → `credential_envelope` + `protection_mode` since the payload isn't always a codeword anymore. Verified via the project's self-tests, a real CLI round trip on the default path, a direct API round trip on a genuinely mixed-mode vault, and a full simulated ceremony (envelope wrap/unwrap included). Sent to the crypto-core-reviewer agent per CLAUDE.md's standing instruction for changes to these modules — came back clean (zero-leakage indexing preserved, skipping KDF for an already-uniform key is sound, no logic duplicated across the two demo frontends), with two minor non-blocking notes (`estimated_word_entropy_bits` can now be `None`; unused `kdf`/`kdf_params` metadata still gets written for all-DRBG vaults).
+
+**Permissions.** At the user's explicit request for broader pre-approval on doc/pptx work, expanded the committed `.claude/settings.json` allowlist (python3, find, diff, wc). Polled specifically on `rm`, which a past session had left deliberately gated as the one destructive command — user chose a middle ground: scoped to `/tmp/**` only, not unrestricted.
+
+**Commits.** Split into 5 focused commits rather than one bundle (user's explicit call): doc-pipeline skill+tool, crypto-path.md/Appendix-A cross-ref + regenerated docs, the new deck slide, the permission expansion, and the DRBG-direct code change. All pushed to `origin/main` (`5399976`..`adff2fd`).
+
+## State at end
+
+Working tree clean except the same three long-standing untracked doc-export files (see below). All five commits pushed.
+
+## Possibly worth following up
+
+- **The prior entry's deck-gap item is now resolved** — §4.8 has a slide. No other deck gaps known.
+- **DRBG-direct is implemented but SPAC's demo ceremony has no per-trustee opt-out selection yet** — `use_codewords` is a whole-ceremony flag (all-DRBG or all-KDF), not per-trustee. §4.8's six-case opt-out framing assumes per-trustee choice; building that selection (likely at ceremony-formation time, alongside the existing role assignment) is real follow-on work, not done this session.
+- The three untracked doc-export files in `docs/` (`shardic_white_paper_20.html`, two `shardic_whitepaper_presentation2.1_white*.pdf`) are still sitting untouched — now eight-plus sessions, still worth asking whether intentional scratch or should be committed/cleaned up.
+
+---
+
 # Session notes — 2026-08-09 (Claude Code: crypto-path reference doc, WP §4.8 added, v2.3 baseline established, deck fixed to match)
 
 ## What happened
