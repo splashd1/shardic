@@ -169,6 +169,9 @@
   </style>
 </head>
 <body>
+<header id="title-block-header">
+<h1 class="title">shardic_white_paper.v2.3</h1>
+</header>
 <p><strong>SHARDIC</strong></p>
 <p>Sharded Encryption for Threshold-Recoverable Vaults — and
 Protected-Action Ceremonies</p>
@@ -2006,7 +2009,13 @@ needed to follow the rest of this paper. This appendix is the complete,
 standalone treatment those sections point to — the same source document
 maintained in the project repository as
 <code>docs/sss_explained_for_shardic.md</code>, reproduced here in full
-so the paper is self-contained.</p>
+so the paper is self-contained. For a code-grounded walkthrough of the
+same material — actual function names, data shapes, and line-level
+detail from the current implementation, extended through
+shardic-envelope and SPAC — see the companion reference document
+<code>docs/shardic-cryptographic-path.md</code>; this appendix stays at
+the conceptual level intentionally, so the two complement rather than
+duplicate each other.</p>
 <h2 id="a.1-the-problem-it-solves">A.1 The Problem It Solves</h2>
 <p>Say you have a secret — a key, a password, a number — and you want to
 split it among several people so that:</p>

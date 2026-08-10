@@ -791,6 +791,12 @@ standalone treatment those sections point to — the same source
 document maintained in the project repository as
 `docs/sss_explained_for_shardic.md`,
 reproduced here in full so the paper is self-contained.
+For a code-grounded walkthrough of the same material — actual function
+names, data shapes, and line-level detail from the current
+implementation, extended through shardic-envelope and SPAC — see the
+companion reference document `docs/shardic-cryptographic-path.md`;
+this appendix stays at the conceptual level intentionally, so the two
+complement rather than duplicate each other.
 
 ## A.1 The Problem It Solves
 

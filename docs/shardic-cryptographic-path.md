@@ -10,6 +10,14 @@ material for a companion slide. Where content describes a **design
 proposal** rather than shipped code, it's flagged explicitly, matching
 the white paper's own Implemented/Design Proposal convention.
 
+This document complements rather than duplicates the white paper's
+**Appendix A** (`docs/shardic_white_paper.v2.3.md` /
+`docs/sss_explained_for_shardic.md`): Appendix A stays at the
+conceptual level (why SSS works, no code); this document covers the
+same ground plus shardic-envelope and SPAC at the level of actual
+function names, data shapes, and line-level detail from the current
+implementation.
+
 This document answers one question precisely: **what cryptographic
 operation happens at each step, on which value, and why** — from DEK
 formation through recovery, across the base scheme, shardic-prime, and
@@ -330,21 +338,56 @@ applied to a device rather than a person.
 
 ### 4.2 Choosing how a SPAC trustee's own share is protected
 
-This is the operation §4.7 of the white paper is actually about, and
-the source of the original question this document grew out of.
-Nothing here is a new cryptographic primitive — it's a choice between
-two of the mechanisms already described, applied to a SPAC trustee's
-share or mask:
+This is the operation §4.7/§4.8 of the white paper are actually about,
+and the source of the original question this document grew out of.
+Nothing here is a new cryptographic primitive — it's two **independent**
+choices, applied to a SPAC trustee's share or mask, each drawing on a
+mechanism already described above:
+
+- **Delivery axis (§4.7)** — does the protection value reach the
+  trustee memorized, or shardic-envelope-wrapped?
+- **Entropy-source axis (§4.8)** — where does that value *come from* in
+  the first place: generated as a human-shaped codeword and stretched
+  through a KDF, or drawn directly from a DRBG as a full-strength key
+  with no wordlist step and no KDF stretching at all?
+
+#### 4.2.1 Delivery axis: memorized vs. shardic-envelope
 
 | Option | Mechanism | Status | When it applies |
 |---|---|---|---|
-| Memorized codeword (opt-out) | §1.4/§2.2's codeword → KDF (PBKDF2/Argon2id) → AES-256-GCM, exactly as the base/prime schemes already do | Implemented | Named, lower-assurance opt-out — e.g. a communications-denied field deployment, where a device holding a wrapped credential is itself a seizable artifact and a memorized word is not |
-| shardic-envelope (default) | §3's codeword-envelope delivery + shard-envelope reply, wrapping the trustee's share/mask material to a keypair they already hold | Implemented (mechanism) / proposed as SPAC's default (§4.7) | Default for SPAC ceremonies — closes the ~150-bit gap between a memorized codeword's practical ceiling and the 256-bit DEK it protects |
+| Memorized (opt-out) | The value is held/typed by the trustee directly, never wrapped | Implemented (mechanism) | Field/communications-denied deployments — a device holding a wrapped credential is itself a seizable artifact; a memorized value is not |
+| shardic-envelope (default) | §3's codeword-envelope delivery + shard-envelope reply, wrapping the trustee's protection value to a keypair they already hold | Implemented (mechanism) / proposed as SPAC's default (§4.7) | Default for SPAC ceremonies |
 
-Both options terminate in the exact same `reconstruct_secret[_with_prime]`
-call — the choice only changes how a share/mask is protected and
-delivered before it ever reaches that step, never what the
-reconstruction math does with it.
+#### 4.2.2 Entropy-source axis: codeword+KDF (baseline) vs. DRBG-direct (SPAC default)
+
+| Option | Mechanism | Status | When it applies |
+|---|---|---|---|
+| Codeword + KDF (baseline / opt-out) | §1.4/§2.2's codeword → KDF (PBKDF2/Argon2id) → AES-256-GCM, exactly as the base/prime schemes already implement and as `demo/combiner/app.py` runs today (`create_vault_prime(..., word_count=1, kdf_method="pbkdf2")`) | Implemented | Named, deliberate opt-out for SPAC too — no persistent key material to seize, no credential-lookup trust boundary, no private-key custody burden, relayable over any channel, no cryptographic-tooling bar for the trustee population, minimal setup friction |
+| DRBG-direct (SPAC default) | A full 256-bit key drawn straight from the same CSPRNG class as the DEK/masks/nonces, used **directly** as the AES-256-GCM share-protection key — no `pick_words()`, no KDF stretching, because stretching only compensates for a human-chosen secret's narrower guessing space | Design proposal (§4.8) — no code path exists yet; `demo/combiner/app.py` does not currently generate or seal a value this way | Standard SPAC default — gives share protection genuine bit-parity with the 256-bit DEK it protects |
+
+Illustrative contrast with §1.4's actual codeword-sealing code — the
+DRBG-direct path would replace the KDF step outright, not merely swap
+which KDF runs:
+
+```python
+# §1.4, today (codeword + KDF, baseline/opt-out):
+share_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
+
+# §4.8, proposed (DRBG-direct, SPAC default) -- not implemented:
+share_key = secrets.token_bytes(32)   # no codeword, no wordlist, no KDF
+```
+
+A DRBG-direct key can't be memorized, so it necessarily forces
+envelope (or shardware-token) delivery — but choosing envelope
+delivery does *not* require a DRBG-direct key; a normally generated
+codeword can still be envelope-wrapped for transport confidentiality
+alone, exactly as the current implementation does. The two axes are
+independent but not symmetric.
+
+Every combination of the two axes still terminates in the exact same
+`reconstruct_secret[_with_prime]` call — the choice only changes how a
+share/mask is protected and delivered before it ever reaches that
+step, never what the reconstruction math does with it.
 
 ### 4.3 shardware-token variants (design proposals, no new field math)
 
@@ -371,7 +414,7 @@ new cryptographic construction:
 | **Status** | Implemented | Implemented | Implemented | Design proposal |
 | **What's split** | The DEK, directly | DEK ⊕ random mask (the masked value is split) | *(not a splitting scheme — a delivery layer, composed on top of prime)* | Same as shardic-prime; DEK generalizes to any PT SPAC-enabling value |
 | **Mandatory participant** | None — any `D` of `T` peers | The prime trustee, always | N/A | The fielded prime element, always |
-| **Per-share protection at rest** | Codeword → KDF → AES-256-GCM | Same, plus a type tag (prime/pool) inside the sealed payload | Unchanged — envelope wraps the codeword/shard in transit, not the stored record | Same as shardic-prime; `mask` sourced from hardware, not memory |
+| **Per-share protection at rest** | Codeword → KDF → AES-256-GCM | Same, plus a type tag (prime/pool) inside the sealed payload | Unchanged — envelope wraps the codeword/shard in transit, not the stored record | Codeword → KDF (baseline/opt-out, implemented) *or* DRBG-direct key with no KDF (proposed default, §4.8); `mask` sourced from hardware, not memory, in the Fielded Prime Element case |
 | **Container format tag** | `krypt1` | `krypt1-prime` | *(inherits whichever container it's layered on — `krypt1-prime` in the current demo)* | Not yet a concrete container format — design proposal |
 | **What crosses the wire during recovery** | Nothing — codewords are typed locally by whoever runs `vault_recover.py` | Same as base scheme | A codeword envelope out, a shard envelope back — never a plaintext codeword | Same envelope pattern, or a physically-carried wrapped shard (shardware-token) |
 
@@ -384,7 +427,7 @@ immediately after Appendix A's SSS explainer (which this document
 assumes as background rather than re-deriving — §1.3's Lagrange
 interpolation step is deliberately terse here for that reason).
 Sections 1–3 correspond to the paper's §3.1–§3.7; §4 corresponds to
-§4.2/§4.7. Status badges above use the same
+§4.2/§4.7/§4.8. Status badges above use the same
 Implemented/Design-Proposal language the paper already uses throughout.
 
 **As a slide.** The natural split is two slides, matching the existing
@@ -401,6 +444,12 @@ per slide):
   prone to being flattened into "envelope wraps the codeword" in
   informal summaries, so a slide that visually separates the two
   directions earns its keep.
+- *Slide C — "Two Independent Axes for a SPAC Trustee's Share"*:
+  §4.2.1/§4.2.2's delivery axis (memorized vs. envelope) crossed with
+  the entropy-source axis (codeword+KDF vs. DRBG-direct) as a 2×2 grid
+  — the natural home for the asymmetry callout (DRBG forces envelope
+  delivery; envelope doesn't force DRBG) and for flagging DRBG-direct
+  as still a design proposal, not shipped code.
 
 **Terminology.** This document follows the project's
 share-vs-shard distinction precisely (see
