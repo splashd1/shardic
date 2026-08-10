@@ -140,7 +140,7 @@ def _new_state():
         "trustee_pubkeys": {},     # sub -> {"username", "public_key" (bytes), "fingerprint"}
         "vault": None,             # {"vault_id", "metadata", "ciphertext" (bytes)}
         "vault_assignment": None,  # {"prime_sub", "pool_subs": [sub, ...]} -- fixed at creation time
-        "codeword_envelopes": {},  # sub -> envelope dict
+        "codeword_envelopes": {},  # sub -> {"envelope": wrapped-dict, "mode": "kdf"|"drbg"}
         "recovery_session": None,  # {"session_id", "replied": set, "mask", "pool_shares"} -- in-memory only
         "trustee_last_seen": {},   # sub -> time.time() of last authenticated request -- in-memory only
         "trustee_status": {},      # sub -> "live" | "paused" -- in-memory only, derived by _heartbeat_loop
@@ -442,7 +442,7 @@ def _ceremony_scan_loop() -> None:
             NOTIFIER.notify(notify_evt)
 
 
-def do_create_vault(input_path: str, outdir: str) -> dict:
+def do_create_vault(input_path: str, outdir: str, use_codewords: bool = False) -> dict:
     with _lock:
         if STATE["vault"] is not None:
             raise CombinerError("a vault already exists for this demo run", status_code=409)
@@ -461,6 +461,15 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
         trustees_t = ceremony["trustees_t"]
         threshold_d = ceremony["threshold_d"]
 
+        # Per whitepaper §4.8, a SPAC ceremony's default share-protection
+        # source is a DRBG-sourced key -- no wordlist, no KDF stretching --
+        # necessarily delivered via shardic-envelope since it can't be
+        # memorized. Traditional codeword+KDF (identical to the base/prime
+        # CLI's own default) remains available as a named opt-out for this
+        # whole ceremony via use_codewords=True.
+        protection_mode = vault_core_prime.PROTECTION_KDF if use_codewords else vault_core_prime.PROTECTION_DRBG
+        protection_modes = [protection_mode] * trustees_t
+
         result = vault_core_prime.create_vault_prime(
             input_path=input_path,
             trustees=trustees_t,
@@ -469,31 +478,36 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
             word_count=1,
             kdf_method="pbkdf2",
             outdir=outdir,
+            protection_modes=protection_modes,
             log=print,
         )
 
-        trustee_files = result["trustee_files"]
-        assert len(trustee_files) == trustees_t
-        pool_files = sorted(f for f in trustee_files if f != result["prime_trustee_file"])
-        assert len(pool_files) == len(pool_subs) == trustees_t - 1
-
-        assignment = [(prime_sub, result["prime_trustee_file"])]
-        assignment.extend(zip(pool_subs, pool_files))
+        credentials = result["credentials"]
+        assert len(credentials) == trustees_t
+        assignment = [(prime_sub, credentials[0])]
+        assignment.extend(zip(pool_subs, credentials[1:]))
+        assert len(assignment) == trustees_t
 
         envelopes = {}
-        for sub, trustee_file_path in assignment:
-            with open(trustee_file_path, "r") as f:
-                codeword = f.read().strip()
+        for sub, cred in assignment:
+            payload = cred["codeword"].encode("utf-8") if cred["mode"] == vault_core_prime.PROTECTION_KDF else cred["key"]
             recipient_pub = STATE["trustee_pubkeys"][sub]["public_key"]
-            envelopes[sub] = shardic_envelope_crypto.wrap(codeword.encode("utf-8"), recipient_pub)
+            envelopes[sub] = {
+                "envelope": shardic_envelope_crypto.wrap(payload, recipient_pub),
+                "mode": cred["mode"],
+            }
 
         # Only after every envelope has been successfully written do we
         # destroy the plaintext -- mirrors pubkey-envelope-plugin.md's
         # "secure destruction of plaintext intermediates" concern. A
         # partial failure above (e.g. one wrap() call raising) leaves the
         # plaintext files intact rather than half-destroying the set.
-        for _sub, trustee_file_path in assignment:
-            _secure_delete(trustee_file_path)
+        # A PROTECTION_DRBG credential has no file at all -- its raw key
+        # was never written to disk in the first place, so there is
+        # nothing to destroy for it.
+        for _sub, cred in assignment:
+            if cred["mode"] == vault_core_prime.PROTECTION_KDF:
+                _secure_delete(cred["file"])
         words_dir = result["words_dir"]
         if os.path.isdir(words_dir) and not os.listdir(words_dir):
             os.rmdir(words_dir)
@@ -534,6 +548,7 @@ def do_create_vault(input_path: str, outdir: str) -> dict:
             "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub in pool_subs],
             "threshold": threshold_d,
             "pool_threshold": metadata["pool_threshold"],
+            "share_protection_mode": protection_mode,
         }
 
     _broadcast("vault_created", response)
@@ -580,13 +595,14 @@ def get_pending_envelope(sub: str) -> dict | None:
         session = STATE["recovery_session"]
         if session is None or sub in session["replied"]:
             return None
-        envelope = STATE["codeword_envelopes"].get(sub)
-        if envelope is None:
+        entry = STATE["codeword_envelopes"].get(sub)
+        if entry is None:
             return None
         return {
             "session_id": session["session_id"],
             "combiner_pub": base64.b64encode(STATE["combiner_public_key"]).decode("ascii"),
-            "codeword_envelope": envelope,
+            "credential_envelope": entry["envelope"],
+            "protection_mode": entry["mode"],
         }
 
 
@@ -896,8 +912,10 @@ def admin_ceremony_initiate():
 @app.route("/admin/vault/create", methods=["POST"])
 def admin_vault_create():
     _operator_sub, operator_username = _require_operator()
-    result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR)
-    print(f"vault created by operator {operator_username}")
+    body = request.get_json(silent=True) or {}
+    use_codewords = bool(body.get("use_codewords", False))
+    result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR, use_codewords=use_codewords)
+    print(f"vault created by operator {operator_username} (share_protection_mode={result['share_protection_mode']})")
     return jsonify(result)
 
 

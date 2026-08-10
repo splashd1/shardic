@@ -51,6 +51,18 @@ VaultError = base.VaultError
 SHARE_TYPE_PRIME = 0
 SHARE_TYPE_POOL = 1
 
+# Share-protection mode, per whitepaper §4.8: "kdf" is the traditional
+# human-memorized codeword stretched through kdf.derive_key(); "drbg" is
+# a full-strength key drawn directly from the OS CSPRNG, used as the
+# share-protection key with no wordlist and no KDF stretching -- because
+# neither serves any purpose against a value that's already uniformly
+# random across the full key space. A "drbg" credential can't be
+# memorized, so callers that choose it must deliver the raw key bytes
+# via shardic-envelope (or physical carriage) rather than asking a
+# trustee to type anything.
+PROTECTION_KDF = "kdf"
+PROTECTION_DRBG = "drbg"
+
 
 def _noop_log(msg: str) -> None:
     pass
@@ -68,6 +80,7 @@ def create_vault_prime(
     kdf_params: dict | None = None,
     randomize_case: bool = False,
     digit_suffix_len: int = 0,
+    protection_modes: list[str] | None = None,
     log=_noop_log,
 ) -> dict:
     """
@@ -76,7 +89,26 @@ def create_vault_prime(
     alongside any (threshold - 1) of the remaining (trustees - 1) pool
     trustees.
 
-    Returns the same shape as create_vault, plus "prime_trustee_file".
+    `protection_modes`, if given, is a list of length `trustees` (index
+    0 = prime, 1..pool_size = pool trustees in split order) of
+    PROTECTION_KDF/PROTECTION_DRBG, choosing per-trustee how that
+    trustee's share is protected (see the PROTECTION_* constants).
+    Omitting it (the default) protects every trustee with PROTECTION_KDF,
+    identical to this function's behavior before this parameter existed
+    -- existing callers (the CLI, the GUI) are unaffected.
+
+    Returns the same shape as create_vault, plus "prime_trustee_file"
+    and "credentials". "credentials" is the authoritative, per-trustee
+    list (prime first, then pool in split order); each entry is either
+    {"mode": "kdf", "codeword": str, "file": path} -- same codeword
+    also written to that file, as always -- or {"mode": "drbg", "key":
+    bytes} for a PROTECTION_DRBG trustee, whose raw key is returned
+    directly and never written to disk anywhere, since there is no
+    codeword file for it to live in. "trustee_files"/"prime_trustee_file"
+    remain populated exactly as before when `protection_modes` is
+    omitted; with a mix of modes they cover only the "kdf" subset, in
+    trustee order -- callers that need the full picture (e.g. a SPAC
+    combiner) should use "credentials" instead.
     """
     if threshold < 2:
         raise ValueError(
@@ -93,9 +125,22 @@ def create_vault_prime(
         raise ValueError("word length should be at least 3")
     if not os.path.exists(input_path):
         raise ValueError(f"input path not found: {input_path}")
+    if protection_modes is not None:
+        if len(protection_modes) != trustees:
+            raise ValueError(
+                f"protection_modes must have exactly {trustees} entries "
+                "(1 prime + pool, in that order)"
+            )
+        if any(m not in (PROTECTION_KDF, PROTECTION_DRBG) for m in protection_modes):
+            raise ValueError(f"protection_modes entries must be {PROTECTION_KDF!r} or {PROTECTION_DRBG!r}")
 
     pool_size = trustees - 1
     pool_threshold = threshold - 1
+
+    def _mode_for(trustee_index: int) -> str:
+        return PROTECTION_KDF if protection_modes is None else protection_modes[trustee_index]
+
+    needs_kdf_credentials = any(_mode_for(i) == PROTECTION_KDF for i in range(trustees))
 
     if kdf_params is None:
         kdf_params = kdfmod.default_params(kdf_method)
@@ -107,35 +152,43 @@ def create_vault_prime(
     words_dir = os.path.join(outdir, f"{krypt_stem}_trustee_words")
     os.makedirs(words_dir, exist_ok=True)
 
-    if word_length is None:
-        dictionary_words = load_dictionary(dictionary_path, None) if dictionary_path else bundled_memorable_wordlist()
-        source = dictionary_path or "the bundled EFF wordlist"
-        log(f"Memorable mode: loaded {len(dictionary_words)} whole, real candidate words from {source}")
-    elif dictionary_path:
-        dictionary_words = load_dictionary(dictionary_path, word_length)
-        log(f"Loaded {len(dictionary_words)} candidate words of length {word_length} from {dictionary_path}")
-    else:
-        dictionary_words = None
-        log("No dictionary supplied; using synthetic pronounceable words.")
+    dictionary_words = None
+    entropy_bits = None
+    if needs_kdf_credentials:
+        if word_length is None:
+            dictionary_words = load_dictionary(dictionary_path, None) if dictionary_path else bundled_memorable_wordlist()
+            source = dictionary_path or "the bundled EFF wordlist"
+            log(f"Memorable mode: loaded {len(dictionary_words)} whole, real candidate words from {source}")
+        elif dictionary_path:
+            dictionary_words = load_dictionary(dictionary_path, word_length)
+            log(f"Loaded {len(dictionary_words)} candidate words of length {word_length} from {dictionary_path}")
+        else:
+            log("No dictionary supplied; using synthetic pronounceable words.")
 
-    entropy_bits = estimate_word_entropy_bits(
-        word_length,
-        word_count,
-        dictionary_size=len(dictionary_words) if dictionary_words else None,
-        randomize_case=randomize_case,
-        digit_suffix_len=digit_suffix_len,
-    )
-    style_bits = []
-    if randomize_case:
-        style_bits.append("mixed case")
-    if digit_suffix_len:
-        style_bits.append(f"+{digit_suffix_len} digit suffix")
-    style = f" ({', '.join(style_bits)})" if style_bits else ""
-    log(
-        f"Estimated codeword strength: ~{entropy_bits:.0f} bits combinatorial per "
-        f"trustee{style} (before any KDF stretching), same for the prime "
-        f"trustee and the pool -- recovery cracks each codeword independently."
-    )
+        entropy_bits = estimate_word_entropy_bits(
+            word_length,
+            word_count,
+            dictionary_size=len(dictionary_words) if dictionary_words else None,
+            randomize_case=randomize_case,
+            digit_suffix_len=digit_suffix_len,
+        )
+        style_bits = []
+        if randomize_case:
+            style_bits.append("mixed case")
+        if digit_suffix_len:
+            style_bits.append(f"+{digit_suffix_len} digit suffix")
+        style = f" ({', '.join(style_bits)})" if style_bits else ""
+        log(
+            f"Estimated codeword strength: ~{entropy_bits:.0f} bits combinatorial per "
+            f"KDF-protected trustee{style} (before any KDF stretching) -- "
+            "recovery cracks each codeword independently."
+        )
+    if any(_mode_for(i) == PROTECTION_DRBG for i in range(trustees)):
+        log(
+            "DRBG-direct mode: the corresponding trustee credential(s) are drawn "
+            "directly from the OS CSPRNG as a full 256-bit key -- no wordlist, "
+            "no KDF stretching, and no codeword file is written for them."
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         tar_path = os.path.join(tmp, "archive.tar")
@@ -154,40 +207,58 @@ def create_vault_prime(
         f"threshold {pool_threshold} (total required to recover: {threshold})"
     )
 
-    def _seal(codeword: str, payload: bytes) -> dict:
+    def _seal_kdf(codeword: str, payload: bytes) -> dict:
         salt = secrets.token_bytes(SALT_LEN)
         share_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
         share_nonce = secrets.token_bytes(NONCE_LEN)
         share_ct = AESGCM(share_key).encrypt(share_nonce, payload, associated_data=None)
         return {
+            "protection": PROTECTION_KDF,
             "salt": base64.b64encode(salt).decode(),
             "nonce": base64.b64encode(share_nonce).decode(),
             "ciphertext": base64.b64encode(share_ct).decode(),
         }
 
+    def _seal_drbg(payload: bytes) -> tuple[dict, bytes]:
+        share_key = secrets.token_bytes(32)
+        share_nonce = secrets.token_bytes(NONCE_LEN)
+        share_ct = AESGCM(share_key).encrypt(share_nonce, payload, associated_data=None)
+        record = {
+            "protection": PROTECTION_DRBG,
+            "nonce": base64.b64encode(share_nonce).decode(),
+            "ciphertext": base64.b64encode(share_ct).decode(),
+        }
+        return record, share_key
+
+    def _issue(trustee_index: int, file_stem: str, payload: bytes) -> dict:
+        """Seals `payload` under whichever protection mode this trustee_index
+        was assigned, and returns its "credentials" entry (see docstring)."""
+        if _mode_for(trustee_index) == PROTECTION_KDF:
+            codeword = pick_words(
+                word_length, word_count, dictionary_words,
+                randomize_case=randomize_case, digit_suffix_len=digit_suffix_len,
+            )
+            share_records.append(_seal_kdf(codeword, payload))
+            file_path = os.path.join(words_dir, f"{file_stem}.txt")
+            with open(file_path, "w") as f:
+                f.write(codeword + "\n")
+            trustee_files.append(file_path)
+            return {"mode": PROTECTION_KDF, "codeword": codeword, "file": file_path}
+        record, raw_key = _seal_drbg(payload)
+        share_records.append(record)
+        return {"mode": PROTECTION_DRBG, "key": raw_key}
+
     share_records = []
     trustee_files = []
+    credentials = []
 
-    prime_codeword = pick_words(
-        word_length, word_count, dictionary_words,
-        randomize_case=randomize_case, digit_suffix_len=digit_suffix_len,
-    )
-    share_records.append(_seal(prime_codeword, bytes([SHARE_TYPE_PRIME]) + mask))
-    prime_file = os.path.join(words_dir, "trustee_prime.txt")
-    with open(prime_file, "w") as f:
-        f.write(prime_codeword + "\n")
-    trustee_files.append(prime_file)
+    prime_cred = _issue(0, "trustee_prime", bytes([SHARE_TYPE_PRIME]) + mask)
+    credentials.append(prime_cred)
+    prime_file = prime_cred.get("file")
 
     for i, (x, y) in enumerate(pool_shares, start=1):
-        codeword = pick_words(
-            word_length, word_count, dictionary_words,
-            randomize_case=randomize_case, digit_suffix_len=digit_suffix_len,
-        )
-        share_records.append(_seal(codeword, bytes([SHARE_TYPE_POOL, x]) + y))
-        trustee_file = os.path.join(words_dir, f"trustee_{i}.txt")
-        with open(trustee_file, "w") as f:
-            f.write(codeword + "\n")
-        trustee_files.append(trustee_file)
+        pool_cred = _issue(i, f"trustee_{i}", bytes([SHARE_TYPE_POOL, x]) + y)
+        credentials.append(pool_cred)
 
     secrets.SystemRandom().shuffle(share_records)
 
@@ -220,6 +291,7 @@ def create_vault_prime(
         "words_dir": words_dir,
         "trustee_files": trustee_files,
         "prime_trustee_file": prime_file,
+        "credentials": credentials,
         "outdir": os.path.abspath(outdir),
         "estimated_word_entropy_bits": entropy_bits,
     }
@@ -253,7 +325,9 @@ def resolve_kdf(metadata: dict) -> tuple[str, dict]:
 
 def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, used_indices):
     """Like vault_core.try_match_word, but decodes the type-tagged
-    payload used by the prime-trustee scheme.
+    payload used by the prime-trustee scheme. Only tries PROTECTION_KDF
+    records -- a PROTECTION_DRBG record has no salt to derive against
+    and no codeword was ever issued for it (see try_match_key_prime).
 
     Returns (record_index, kind, value) where kind is "prime" and
     value is the mask bytes, or kind is "pool" and value is
@@ -262,10 +336,43 @@ def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, u
     for idx, rec in enumerate(share_records):
         if idx in used_indices:
             continue
+        if rec.get("protection", PROTECTION_KDF) != PROTECTION_KDF:
+            continue
         salt = base64.b64decode(rec["salt"])
         nonce = base64.b64decode(rec["nonce"])
         ct = base64.b64decode(rec["ciphertext"])
         key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
+        try:
+            payload = AESGCM(key).decrypt(nonce, ct, associated_data=None)
+        except InvalidTag:
+            continue
+
+        share_type = payload[0]
+        if share_type == SHARE_TYPE_PRIME:
+            return idx, "prime", payload[1:]
+        if share_type == SHARE_TYPE_POOL:
+            return idx, "pool", (payload[1], payload[2:])
+        continue
+    return None
+
+
+def try_match_key_prime(key: bytes, share_records, used_indices):
+    """PROTECTION_DRBG counterpart to try_match_word_prime: `key` is the
+    raw share-protection key a trustee already holds (delivered via
+    shardic-envelope or physical carriage, never typed), tried directly
+    against every not-yet-matched PROTECTION_DRBG record -- no salt, no
+    KDF, since the key is already the AES-256-GCM key itself.
+
+    Returns (record_index, kind, value), same shape as
+    try_match_word_prime. Returns None if no untried record matches.
+    """
+    for idx, rec in enumerate(share_records):
+        if idx in used_indices:
+            continue
+        if rec.get("protection", PROTECTION_KDF) != PROTECTION_DRBG:
+            continue
+        nonce = base64.b64decode(rec["nonce"])
+        ct = base64.b64decode(rec["ciphertext"])
         try:
             payload = AESGCM(key).decrypt(nonce, ct, associated_data=None)
         except InvalidTag:

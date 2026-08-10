@@ -154,11 +154,12 @@ def poll_and_respond_loop(
         body = resp.json()
         session_id = body["session_id"]
         combiner_pub = base64.b64decode(body["combiner_pub"])
+        protection_mode = body["protection_mode"]
 
         try:
-            codeword = shardic_envelope_crypto.unwrap(body["codeword_envelope"], private_key).decode("utf-8")
+            credential = shardic_envelope_crypto.unwrap(body["credential_envelope"], private_key)
         except shardic_envelope_crypto.EnvelopeError as e:
-            log(f"could not unwrap codeword envelope: {e}")
+            log(f"could not unwrap credential envelope: {e}")
             time.sleep(poll_interval_s)
             continue
 
@@ -167,13 +168,22 @@ def poll_and_respond_loop(
             meta_resp.raise_for_status()
             cached_metadata = meta_resp.json()
 
-        kdf_method, kdf_params = vault_core_prime.resolve_kdf(cached_metadata)
-        match = vault_core_prime.try_match_word_prime(
-            codeword, cached_metadata["shares"], kdf_method, kdf_params, used_indices=set()
-        )
-        del codeword  # never needed again; don't let it linger in a local var
+        if protection_mode == vault_core_prime.PROTECTION_DRBG:
+            # A DRBG-direct credential is already the raw AES-256-GCM
+            # share-protection key -- no KDF, no salt, tried directly.
+            match = vault_core_prime.try_match_key_prime(
+                credential, cached_metadata["shares"], used_indices=set()
+            )
+        else:
+            codeword = credential.decode("utf-8")
+            kdf_method, kdf_params = vault_core_prime.resolve_kdf(cached_metadata)
+            match = vault_core_prime.try_match_word_prime(
+                codeword, cached_metadata["shares"], kdf_method, kdf_params, used_indices=set()
+            )
+            del codeword
+        del credential  # never needed again; don't let it linger in a local var
         if match is None:
-            log("codeword did not match any share record in this vault's metadata -- cannot derive a shard")
+            log(f"{protection_mode} credential did not match any share record in this vault's metadata -- cannot derive a shard")
             time.sleep(poll_interval_s)
             continue
 
