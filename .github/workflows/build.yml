@@ -1,16 +1,22 @@
 name: Build VaultTool executables
 
-# Builds standalone executables for Windows and Linux on every push to
-# main and on manual trigger. This is the practical way to get a real
-# Windows .exe without owning a Windows machine: PyInstaller can't
-# cross-compile, but GitHub's windows-latest runners can build it for
-# you. Download the artifacts from the workflow run's "Summary" page.
+# Builds standalone executables for Windows and Linux on manual
+# trigger and on release tags. This is the practical way to get a
+# real Windows .exe without owning a Windows machine: PyInstaller
+# can't cross-compile, but GitHub's windows-latest runners can build
+# it for you. Download the artifacts from the workflow run's
+# "Summary" page.
 #
 # Pushing a tag matching v* (e.g. `git tag v1.0.0 && git push --tags`)
 # additionally publishes a GitHub Release with the Windows and Linux
 # build outputs (including both AppImages) attached -- see the
-# `release` job below. Ordinary pushes to main just build + upload
-# workflow-run artifacts, no Release is created.
+# `release` job below.
+#
+# Does NOT run on ordinary pushes to main -- each run uploads ~320MB
+# of artifacts (Linux binaries+AppImages ~257MB, Windows exes ~63MB),
+# and at this repo's commit cadence that blew through the 0.5GB
+# included Actions storage quota in a single day. Use
+# workflow_dispatch for an on-demand test build.
 #
 # To use in a different repo: put these files at the paths shown,
 # push, then check the Actions tab.
@@ -27,7 +33,6 @@ name: Build VaultTool executables
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch: {}
 
@@ -57,7 +62,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: VaultTool-windows-x64
-          retention-days: 5
+          retention-days: 2
           path: |
             dist/VaultTool-GUI.exe
             dist/vault-create.exe
@@ -93,7 +98,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: VaultTool-linux-x64
-          retention-days: 5
+          retention-days: 2
           path: |
             dist/VaultTool-GUI
             dist/vault-create
