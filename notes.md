@@ -1,3 +1,23 @@
+# Session notes — 2026-08-11 (Claude Code: fixed GitHub Actions storage quota overage — build.yml no longer triggers on every push)
+
+## What happened
+
+Short, focused session. User forwarded a GitHub email: the repo's Actions storage (0.5GB included/month) was at 100% used.
+
+**Root cause found via `gh api`.** `.github/workflows/build.yml` was building on *every push to `main`*, not just releases — and this repo pushes many times a day (notes-sync commits, doc edits, etc.). Each run uploads ~320MB of artifacts (Linux binaries + both AppImages ~257MB, Windows exes ~63MB) with 5-day retention. `gh api repos/{owner}/{repo}/actions/artifacts` showed 40 non-expired artifacts totaling 6.4GB sitting in the backlog — the 0.5GB billing figure is a cycle snapshot, but the real problem was the trigger design at this commit cadence.
+
+**Fix, confirmed with the user via AskUserQuestion (chose: stop building on every push + delete stale artifacts now):**
+- `build.yml`: removed `branches: [main]` from the `push` trigger, leaving only `push: tags: ["v*"]` and `workflow_dispatch`. Build now only runs on-demand or at actual release time. Also dropped `retention-days` 5→2 as a backstop. Commit `23fa1b1`, pushed to both remotes (GitHub + the LAN mirror).
+- Deleted all 42 artifacts (`gh api -X DELETE .../actions/artifacts/{id}`, looped) to reclaim the 6.7GB backlog immediately rather than waiting out the retention window.
+
+**Verified the fix took effect**, not just assumed: `gh workflow view build.yml --yaml` shows the updated trigger on GitHub's side, and `gh run list` confirms no new run fired for the just-pushed commit (last `push`-triggered runs are still the pre-fix ones from `4eb7747`/`adff2fd`). Artifact count is back to 0 (`gh api .../artifacts` → `total_count: 0`).
+
+## State at end
+
+Working tree clean (only the pre-existing LibreOffice lock file `docs/.~lock.SHARDIC_White_Paper_v2.2_with_figures.docx#` untracked, unrelated). One commit pushed. No open follow-ups from this session — the trigger change is a durable fix, not a workaround; next release build happens via `git tag vX.Y.Z && git push --tags` or manual `workflow_dispatch` same as before.
+
+---
+
 # Session notes — 2026-08-09 (Claude Code: crypto-path doc/WP cross-referenced, §4.8 deck gap closed, DRBG-direct share protection implemented in code)
 
 ## What happened
