@@ -13,16 +13,18 @@ User then asked, independent of that review, what content the WP was actually st
 
 Sections renumbered live as each was inserted (final order: 1 Need, 2 ConOps, 3 Mechanics, 4 SPAC Ecosystem, 5 Notional Missions, 6 Security, 7 Summary, 8 Related Work, 9 Technology Readiness, 10 Path to PoC, 11 IP/Licensing, Appendix A). Verified via grep that no stray `§8`/`§9` cross-references were left pointing at the wrong section after each renumber.
 
+**Follow-up in the same session: committed the WP edit, then regenerated and committed the docx/html twins.** `docs/shardic_white_paper.v2.3.md` committed as `43c2cda`. Then ran the `shardic-doc-pipeline` skill's reference-doc pipeline (pandoc + `fix_docx.py`) to regenerate `SHARDIC_White_Paper_v2.3_with_figures.docx` and `shardic_white_paper23.html`. `fix_docx.py` remapped 406 dangling style refs (nonzero, as expected — confirms the fix actually ran) and stripped 0 orphaned media (expected, no images touched). Verified properly, not just assumed: table count went 6→10 (matches the four new tables), rendered all four new tables to PNG and confirmed real bordered/columned tables rather than the known flattened-paragraph corruption bug, 67-page PDF render, all four new section headings present in both twins. Committed as `1ede3e1`, pushed to both remotes.
+
 ## State at end
 
-**`docs/shardic_white_paper.v2.3.md` has uncommitted changes** (137 lines added/changed) — deliberately left uncommitted per the sync skill's scope (this sync only touches `notes.md`); user should review before committing.
+Working tree clean. Two commits this session beyond the notes sync: `43c2cda` (WP §8–§11 content) and `1ede3e1` (regenerated docx/html twins). Both pushed to GitHub and the LAN mirror.
 
 ## Possibly worth following up
 
-- **The docx/html twins have not been regenerated** from these new sections — `shardic_white_paper23.html` and the various `.docx` exports are now stale relative to the `.md`. Next session should run the `shardic-doc-pipeline` skill once the new content is reviewed/approved.
-- **Patent-counsel consult is flagged as time-sensitive**, independent of everything else — if the user intends to actually pursue filing, that should happen before this WP goes to any funder, not after. Worth checking whether this happened before treating §11 as settled.
+- **Patent-counsel consult is flagged as time-sensitive**, independent of everything else — if the user intends to actually pursue filing, that should happen before this WP goes to any funder, not after (§11.2/§11.3). Worth checking whether this happened before treating §11 as settled.
 - **Two gaps from the original six-item audit remain undrafted**: benchmark/performance data for the implemented core (§10 Phase 1 now formally commits the paper to producing this) and a short team/track-record section (flagged as optional, lower priority).
 - Should decide whether this round of additions warrants bumping the WP to v2.4 given its scope, or stays a v2.3 in-place edit — not addressed this session.
+- The other rendered forms of the whitepaper (`SHARDIC_White_Paper_v2.3.1_with_figures.docx`, `shardic_white_paper.v.1.2*`, older `.md` versions) were not touched — only the v2.3 trio. v2.3.1's docx was a hand-edited checkpoint per the 2026-08-11 commit `b165aae` with no corresponding `.md`; unclear whether it should also pick up these sections or is considered superseded.
 
 ---
 
