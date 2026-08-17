@@ -1,3 +1,31 @@
+# Session notes — 2026-08-17 (Claude Code: reviewed WP231_improve_ideas.MD, added four new funding-oriented WP sections — §8 Related Work, §9 Technology Readiness, §10 Path to PoC, §11 IP/Licensing)
+
+## What happened
+
+Started from `docs/WP231_improve_ideas.MD` — a prior AI-review doc suggesting DoD-market improvements to the whitepaper. Read it against the actual v2.3 WP and pushed back hard: most of its suggestions (two-person control, bypass-resistance-as-feature, AI-trustee data-feed hardening) were already covered more rigorously in §4–§7, and its NC3/nuclear-launch targeting plus the NIST 800-207 "compliance language" boilerplate were flagged as active overclaiming risks that clash with the WP's own claim-boundary discipline (Reader's Guide). Recommended against incorporating that review's framing.
+
+User then asked, independent of that review, what content the WP was actually still missing given three goals: awareness of the tech, the security-benefit case, and soliciting PoC funding. Identified six gaps (no funding ask/roadmap, no TRL framing, no related-work/prior-art, no benchmark data, no IP/licensing posture, no team section) and drafted four of them into `docs/shardic_white_paper.v2.3.md` across this session, each as its own numbered section, all cross-referenced in both directions and from the Abstract:
+
+- **§8 Related Work and Differentiation** — 7-row comparison table against `ssss`, HashiCorp Vault's Shamir unseal, cloud KMS multi-party policies, FROST/MPC threshold-signature schemes, enterprise HSM M-of-N custodian recovery, crypto multisig/BIP39, and PAL hardware. Names what's actually novel (zero-leakage indexing as a stated goal, the Fielded Prime Element hardware-binding substitution, the SPAC generalization itself, composable human/hardware/AI trustee classes) and argues why that differentiated layer — not the base scheme, which is public 45-year-old math — is the actual investable asset.
+- **§9 Technology Readiness** — self-rated TRL per component (implemented core = TRL 4, SPAC core = TRL 2, path-trustee/human-AI mission types = TRL 1), each justified against specifics already in the paper rather than asserted; explicit caveat that this is a self-assessment, not independently validated.
+- **§10 Path to Proof of Concept** — 4-phase funding roadmap (core hardening/tests+benchmarks → first SPAC vignette software-only → hardware-anchored variants → the two novel mission types), each phase cross-referenced to a target TRL exit from §9. Deliberately left duration/budget as blank proposal-specific parameters rather than inventing numbers. Explicit non-goals section (no NC3 path, no compliance certification as a deliverable, no committed hardware vendor).
+- **§11 IP and Licensing Posture** — added after asking the user two clarifying questions (AskUserQuestion): licensing posture chosen as **"not yet decided — flag it, don't commit"** (drafted as an open trade-off table, no recommendation baked in); patent status is **"no filing yet, but intend to pursue one."** Section states that intent plainly, then flags a real, time-sensitive risk: §4/§8.2 already describe the Fielded Prime Element and SPAC generalization in enough depth to function as a public disclosure once the WP is distributed, and most non-US patent systems have no grace period — recommended consulting patent counsel about a provisional filing *before* wider distribution, as the actual next step rather than something bundled into the later PoC roadmap.
+
+Sections renumbered live as each was inserted (final order: 1 Need, 2 ConOps, 3 Mechanics, 4 SPAC Ecosystem, 5 Notional Missions, 6 Security, 7 Summary, 8 Related Work, 9 Technology Readiness, 10 Path to PoC, 11 IP/Licensing, Appendix A). Verified via grep that no stray `§8`/`§9` cross-references were left pointing at the wrong section after each renumber.
+
+## State at end
+
+**`docs/shardic_white_paper.v2.3.md` has uncommitted changes** (137 lines added/changed) — deliberately left uncommitted per the sync skill's scope (this sync only touches `notes.md`); user should review before committing.
+
+## Possibly worth following up
+
+- **The docx/html twins have not been regenerated** from these new sections — `shardic_white_paper23.html` and the various `.docx` exports are now stale relative to the `.md`. Next session should run the `shardic-doc-pipeline` skill once the new content is reviewed/approved.
+- **Patent-counsel consult is flagged as time-sensitive**, independent of everything else — if the user intends to actually pursue filing, that should happen before this WP goes to any funder, not after. Worth checking whether this happened before treating §11 as settled.
+- **Two gaps from the original six-item audit remain undrafted**: benchmark/performance data for the implemented core (§10 Phase 1 now formally commits the paper to producing this) and a short team/track-record section (flagged as optional, lower priority).
+- Should decide whether this round of additions warrants bumping the WP to v2.4 given its scope, or stays a v2.3 in-place edit — not addressed this session.
+
+---
+
 # Session notes — 2026-08-11 (Claude Code: fixed GitHub Actions storage quota overage — build.yml no longer triggers on every push)
 
 ## What happened
