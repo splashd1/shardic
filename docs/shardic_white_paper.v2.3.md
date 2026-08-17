@@ -20,7 +20,7 @@ Read end to end, the design is best understood by its genealogy as much as its a
 
 Section 5 walks four notional missions through the full ceremony lifecycle this generalization makes possible: a high-value treasury disbursement (§5.1), a safety-interlock release authorization (§5.2), a path-trustee network integrity model in which relay nodes along a trusted network route each act as sequential trustees enforcing a chained commitment structure that makes payload transit a cryptographic fact rather than an administrative claim (§5.3), and a hybrid human-AI trustee governance model in which AI trustees enforce formally defined objective criteria and human trustees supply irreplaceable situational judgment, with the threshold mathematics ensuring neither layer can act without the other (§5.4). Figures 5.3 and 5.4 provide decision tree diagrams for the two new vignettes. Sections 6–7 extend the security discussion and summary to all four missions and to §4.6's bypass-resistance question, including the new attack surfaces introduced by AI trustee data-feed authentication, sequential chain integrity, and the distinction between software-enforced and hardware-anchored non-bypassability.
 
-Everything described from Section 4 onward is a design proposal, not shipped functionality — flagged as such throughout, in the same spirit as §3.6/§3.7 flagged shardic-envelope before it shipped. Appendix A gives the complete, standalone treatment of Shamir's Secret Sharing that §1.4 and §3.2 summarize inline.
+Everything described from Section 4 onward is a design proposal, not shipped functionality — flagged as such throughout, in the same spirit as §3.6/§3.7 flagged shardic-envelope before it shipped. Section 8 situates shardic against existing multi-party secret-protection approaches and states what actually differentiates it; Section 9 gives the project's own component-by-component Technology Readiness Level self-assessment; Section 10 states plainly what that means for funding: a phased roadmap from the already-implemented core to a working SPAC demonstration, scoped against what a proof-of-concept award would and would not claim. Section 11 names, without resolving, the licensing and IP-ownership decision that governs all of it, and flags one time-sensitive consequence of this whitepaper's own distribution. Appendix A gives the complete, standalone treatment of Shamir's Secret Sharing that §1.4 and §3.2 summarize inline.
 
 ## Reader's Guide: Claims, Status, and Terminology
 
@@ -96,7 +96,7 @@ A family or founder splits access to a password manager's master vault, or other
 
 
 
-Where this approach fits best: rare, high-stakes, offline "break-glass" access with a small, semi-static trustee set, where the vault file itself must be safely storable and shareable without leaking metadata about who holds what. It is a poor fit for frequent or live authorization, for revoking a single trustee without a full re-split, or for online multi-party protocols — those are better served by threshold-signature schemes (e.g. FROST) or HSM-backed multisig, which support key rotation and live quorum that this static, split-once design does not attempt to provide.
+Where this approach fits best: rare, high-stakes, offline "break-glass" access with a small, semi-static trustee set, where the vault file itself must be safely storable and shareable without leaking metadata about who holds what. It is a poor fit for frequent or live authorization, for revoking a single trustee without a full re-split, or for online multi-party protocols — those are better served by threshold-signature schemes (e.g. FROST) or HSM-backed multisig, which support key rotation and live quorum that this static, split-once design does not attempt to provide. §8 gives the fuller comparison against these and other existing approaches, and states what specifically differentiates shardic from each.
 
 ## 1.4 How Threshold Secret Sharing Works, Conceptually
 
@@ -782,6 +782,139 @@ Taken together, these limitations describe the boundary of the problem this desi
 ‡ The combiner verifies the combined receipt set (§5.3) independently of each individual node's local verification. A node cannot produce a valid C_n without the predecessor's actual signed output.
 
 § The combined reconstruction gate at Tier 3 of Figure 5.4 is a defensive invariant check. If both Tier 2 sub-threshold gates passed, this gate is algebraically guaranteed to pass for the representative configuration shown.
+
+# 8. Related Work and Differentiation
+
+Status: self-assessment.
+
+§1.3 already draws one boundary in passing — this design is a poor fit for live, rotatable, online quorum, where threshold-signature schemes or HSM-backed multisig are the better tool. What follows makes that comparison complete rather than a single caveat, across every category of existing multi-party secret protection this paper is aware of, and then states plainly what survives that comparison as actually new — the part worth continued investment, as distinct from the part that is simply a well-built implementation of known techniques.
+
+## 8.1 The Landscape
+
+| Category | Representative Examples | Core Mechanism | Overlap With shardic | Where It Diverges |
+|---|---|---|---|---|
+| Raw Shamir's Secret Sharing implementations | `ssss` (Poettering); assorted per-language SSS libraries | The same GF(256) polynomial construction as §3.2 | Identical mathematical core; shares carry zero information below threshold | Primitive only — no container format, no codeword-derived share protection, no zero-leakage indexing, no ceremony lifecycle, no generalization beyond a single split |
+| Secrets-management platforms with Shamir-based unseal | HashiCorp Vault's unseal-key mechanism | M-of-N key shares, distributed once at initialization, unseal a running service's own master key | Same underlying math protecting a root secret | Protects a live server's restart step, not a portable standalone artifact; unseal keys are typically raw output known to belong to a fixed N, with no equivalent to §3.4's zero-leakage indexing; built for a service coming back online, not deliberate, rare, offline break-glass recovery |
+| Multi-party approval in cloud KMS | AWS/GCP/Azure key policies requiring multiple IAM principals | Application/IAM-policy-layer gating of a sensitive operation | Multi-party gating of the same kind of sensitive action | Enforced by software policy, not information-theoretic math — precisely the "who administers it can bypass it" gap §7.1 names; requires live provider connectivity; no analog to Shamir's below-threshold zero-information guarantee |
+| Threshold-signature / MPC schemes | FROST, threshold-ECDSA constructions, MPC custody platforms | Live, rotatable, cryptographically strong multi-party signing protocols | Strong multi-party control, already the better tool for the live/online case per §1.3, §7.3 | shardic is deliberately static and split-once; these solve the case shardic explicitly disclaims — a neighboring tool for a different operating profile, not a competitor |
+| Enterprise HSM key-custodian recovery | M-of-N smart-card custodian schemes offered by HSM vendors for master-key backup/restore | Physical distribution of shares to named custodians, reconstruction only in a rare/emergency event | The closest commercial analog to §1.3's break-glass use case | Tied to one vendor's proprietary hardware and format; no equivalent to a portable, vendor-neutral, self-describing single-file container; no generalization beyond that one HSM's own key material |
+| Cryptocurrency multisig / social recovery | Guardian-based smart-contract wallets, hardware-wallet multisig, BIP39 seed phrases (already compared directly in §4.8) | Multiple independent signatures required on a transaction | Multi-party authorization as a governing concept | On-chain multisig requires several independent signatures, not reconstruction of one shared secret; no equivalent to zero-leakage indexing or a single portable ciphertext artifact |
+| Two-Person Integrity / Permissive Action Link hardware | Fielded PAL systems (§4.1's cited precedent) | Dedicated, certified physical/electronic interlock hardware and procedure | The organizational "no single actor" pattern SPAC generalizes | Purpose-built, certified hardware for one specific mission, not general-purpose portable software; not designed to gate arbitrary capabilities the way §4.2's Fielded Prime Element abstraction is |
+
+## 8.2 What Is Actually Novel Here
+
+- **Zero-leakage indexing as a stated design goal (§3.4).** Brute-trial share matching against the AES-GCM auth tag, with no share-to-trustee mapping ever recorded, is not merely a possible property of Shamir's math — it is a deliberate choice this paper's review of §8.1 found no equivalent to. Most surveyed systems either record who holds which share for operational reasons, or sidestep the question because shares aren't a persisted artifact at all (the threshold-signature/MPC row).
+
+- **The Fielded Prime Element hardware-binding construction (§4.2).** Binding reconstruction to one specific piece of fielded silicon by substituting the mask input with a hardware-sealed secret, reusing the mask/pool one-time-pad math completely unmodified, is a specific, non-obvious application of existing cryptography to a binding problem — not a new primitive, but a use of one that §8.1's categories don't address.
+
+- **The SPAC generalization itself (§4.1).** None of §8.1's categories treats threshold secret sharing as a general capability-gating framework: each solves one fixed application (unseal, KMS approval, signing, wallet custody, one certified PAL mission). §4's formal structure — named roles (§4.4), a four-tier non-bypassable-invocation taxonomy (§4.6), two independent composable axes for delivery and entropy source (§4.7–§4.8) — is what generalizes the pattern rather than instantiating it once more.
+
+- **Composable trustee classes (§5.3–§5.4, §7.2).** Human, hardware relay/path, and bounded-AI-evaluator trustees participating in the same threshold framework under an explicit AND-composition rule across classes has no counterpart in §8.1 — and is particularly timely given the direction of "human-in-the-loop" governance requirements for autonomous and AI-assisted systems.
+
+These are this paper's own findings against the categories it surveyed, not a freedom-to-operate opinion or a patentability determination — both require patent counsel and a formal prior-art search beyond a whitepaper's own literature review.
+
+## 8.3 Why This Differentiation Is the Better Investment
+
+- The base scheme alone (§1–§3) sits on largely unprotectable ground: Shamir's construction is public, 45-year-old mathematics, and general-purpose implementations of it already exist as prior art (§8.1's first row). Funding that stops there funds a well-executed, useful, but not independently defensible reimplementation of a known technique — not an asset that compounds in value or supports an exclusive market position.
+
+- The differentiation identified in §8.2 lives entirely in the SPAC layer — which is exactly the layer §9's TRL rating puts at TRL 2, architecture only, nothing built. A whitepaper description is evidence of conception, not a defensible or marketable asset on its own; a built, exercised, demonstrable implementation is what a later patent filing, licensing conversation, or acquisition discussion actually needs to point to.
+
+- This is what reframes §10's PoC phases 2–4 as more than a maturity exercise: that funded work is specifically what converts the differentiated, higher-value layer from a paper description into a reduction-to-practice record — the concrete artifact that IP counsel, an investor, or an acquirer would want to see before valuing this above "a well-executed reimplementation of Shamir's Secret Sharing," which is a commodity buildable elsewhere for materially less.
+
+- One item this framing surfaces without resolving: no license or IP-ownership terms currently exist for this project. That is a decision worth making deliberately — and ideally before any funded work adds patent-relevant material — since it determines who would hold rights to what continued development produces. §11 gives the fuller treatment, including one consequence of this whitepaper's own distribution that is time-sensitive independent of when that broader decision gets made.
+
+# 9. Technology Readiness
+
+Status: self-assessment.
+
+This project's own Implemented / Design proposal / Illustrative legend (Reader's Guide) already separates what runs from what is specified from what is sketched. Technology Readiness Level (TRL) — the 1–9 maturity scale used throughout DoD and NASA acquisition — is a more granular, more widely recognized vocabulary for the same distinction, and the one a funder is likeliest to actually score against. What follows maps this paper's components onto that scale, states the specific basis for each rating, and is explicit about what a self-assessment can and cannot claim on its own.
+
+## 9.1 Rating by Component
+
+| Component | This Paper's Status | Self-Rated TRL | Basis |
+|---|---|---|---|
+| Base scheme, shardic-envelope, ceremony formation (§1–§3.7) | Implemented | TRL 4 — component/system validated in a laboratory environment | Running CLI and GUI frontends, packaged builds (AppImage; the Windows build script is written but has never been run, per the project's own open items), validated by repeated manual create→recover→diff round trips and `gf256_sss.py`'s built-in self-tests. Not rated higher: no automated regression suite yet, no independent or third-party cryptographic review, and no exercise outside the developer's own environment — nothing here has been through a "relevant environment" in TRL 5's sense. |
+| SPAC core: Fielded Prime Element, shardware-token, non-bypassable invocation, roles and governance (§4) | Design proposal | TRL 2 — concept and application formulated | §4.2 documents that this reuses the base scheme's already-validated construction through one specific, unmodified substitution — the cryptography is not the open risk here. What is unbuilt is the system around it: hardware binding, role separation, extraction-grant ceremonies exist only as architecture. No code, no lab exercise of the SPAC system as a whole. Vignettes A and B (§5.1–§5.2) apply this same machinery through named roles and inherit this rating rather than earning a separate one. |
+| Path-trustee network integrity; hybrid human-AI policy gates (§5.3–§5.4) | Illustrative, notional | TRL 1 — basic principles observed and reported | The individual building blocks — signed receipt chains, independent-gate AND composition — are established patterns on their own. Their specific combination here is sketched, not specified: §7.3 already names the wire format for AI trustee share contributions and the feed-authentication architecture as undesigned. Rated below §4 because §4 has reached architecture-level resolution (named roles, mechanism tables, threat trade-offs) that these two have not yet reached. |
+
+## 9.2 Caveats on This Self-Assessment
+
+- **Self-assessed, not independently validated.** A TRL determination that matters to a funding decision is normally produced or confirmed by an assessor independent of the team proposing the work. Treat the table above as a starting position for that conversation, not a substitute for it.
+- **TRL measures what has been built and exercised, not how carefully it has been designed.** §4's unusual level of architectural detail for a TRL 2 item — role tables, threat trade-offs, a four-tier bypass-resistance taxonomy — reflects design rigor, not built-and-tested status. The rating tracks the latter only.
+- **The scale doesn't natively distinguish "new idea" from "already-validated primitive, new integration."** §4's actual risk profile is the latter, per §4.2's documented substitution — the basis column exists specifically to carry that nuance, since TRL 2 alone would flatten it to look the same as an unproven concept.
+
+## 9.3 Target TRL by PoC Phase
+
+§10.2 below lays out four funding phases. Restated on this scale: Phase 1 closes the specific gaps — no automated test suite, no independent review — that currently cap the implemented core at TRL 4, moving it toward TRL 5. Phase 2 takes the SPAC core from TRL 2 to TRL 4 by building and exercising it, even against commodity hardware standing in for a not-yet-chosen secure element. Phase 3 moves that same system toward TRL 5–6 once it is validated against an actual target device rather than a stand-in. Phase 4 takes the two novel mission types from TRL 1 to roughly TRL 3, once a reference implementation and a real wire format exist to analyze rather than describe.
+
+# 10. Path to Proof of Concept
+
+Status: funding proposal.
+
+Sections 1–3 describe a working system: implemented, self-tested, and validated by hand through repeated create-recover-diff cycles. Section 4 onward describes a design that reuses that same cryptographic core without modification — §4.2 is explicit that the Fielded Prime Element substitution needs no new cryptography — but exists today as architecture, not code. What follows states plainly what a proof-of-concept award would fund, in what order, and what it would produce, so that "design proposal" has a concrete path to "implemented" rather than remaining a permanent label.
+
+## 10.1 What Funding Buys
+
+The base scheme's maturity is not in question — that risk is already retired. What remains unbuilt is everything that turns "the mathematics generalizes cleanly" (§4.1–§4.2) into a fielded, demonstrable capability: the Fielded Prime Element binding, the shardware-token variants, the non-bypassable invocation patterns of §4.6, and the two mission types — path-trustee network integrity and hybrid human-AI gates — that have no analog in the file-vault core at all. None of this requires inventing new cryptography; all of it requires engineering time, integration work, and, for the hardware-anchored tiers, physical hardware to build against. That is what a PoC phase buys: not a research bet on whether the idea works, but the construction cost of a design whose cryptographic core is already proven.
+
+## 10.2 Phased Roadmap
+
+The phases below are ordered by dependency and by how much they de-risk before requiring hardware sourcing or novel integration work — each phase produces a standalone, demonstrable result rather than a partial system that only becomes useful once every later phase also lands.
+
+| Phase | Focus | Builds On | Representative Deliverable | Target TRL Exit (§9) |
+|---|---|---|---|---|
+| 1 — Core hardening | Automated test coverage for `gf256_sss.py` and `krypt_container.py` (property tests: any D-of-T subset reconstructs, D−1 doesn't; round-trip and corruption-handling tests); published benchmark data for share generation, reconstruction, and Argon2id cost across representative T/D and hardware profiles | §3.1–§3.5 (implemented core) | A test-backed, benchmarked release substantiating the abstract's "largely-implemented" claim with evidence rather than assertion | TRL 4 → toward TRL 5 |
+| 2 — First SPAC vignette, software-only | End-to-end build of one notional mission (§5.1's treasury disbursement is the natural first pick: no exotic hardware required, a commodity HSM or TPM stands in for the not-yet-designed PUF/secure-element target) — Approver/Operator role separation (§4.4), capability-binding-tier non-bypassable invocation (§4.6) | §3.6–§3.7 (shardic-envelope, ceremony formation) | A running demonstration of capability authorization, not file decryption — the first artifact that shows SPAC as more than a reframing | TRL 2 → TRL 4 |
+| 3 — Hardware-anchored variants | shardware-token physical carriage (§4.3) first, since it requires no new trust logic; PUF-sealed embed/extract second, once a secure-element target and a hardware sourcing/partnership path are identified | Phase 2's Fielded Prime Element construction | Bypass resistance raised from Phase 2's "capability binding" tier to "secure-element-internal sequencing" (§4.6) against a real device, not a commodity stand-in | TRL 4 → TRL 5–6 |
+| 4 — Novel mission types | Path-trustee network integrity (§5.3) and hybrid human-AI policy gates (§5.4) — the two mission types §5's introduction already flags as having no analog in the file-vault core | Phases 1–3's hardened, fielded SPAC foundation | The pieces of this design that are hardest to find prior art for (§1.3's related-work gap notwithstanding) built and demonstrable, not just specified | TRL 1 → TRL 3 |
+
+Duration and cost per phase are deliberately left as proposal-specific parameters here rather than invented figures — in the same spirit as §5's illustrative T/D values, a number asserted without a specific funder, team size, and hardware-sourcing timeline behind it would be decoration, not information.
+
+## 10.3 What This Roadmap Does Not Claim
+
+Consistent with this paper's claim-boundary discipline (Reader's Guide), the roadmap above deliberately does not promise:
+
+- **A path to classified or NC3-adjacent deployment.** Nothing in §4–§5 is designed against, or claims readiness for, a certified national-security accreditation regime. Vignette B (§5.2) is a notional safety-interlock pattern, not a proposal to touch an actual weapons-release system.
+- **Compliance certification as a PoC deliverable.** A PoC phase produces working code and, where applicable, a mapping of its guarantees to a framework like NIST SP 800-207 — it does not produce an ATO, a FIPS validation, or a claim of "compliant" that only an accredited assessment can actually confer.
+- **A committed hardware vendor or PUF technology.** §4.3's PUF-sealed variant names a category of mechanism, not a chosen part number; Phase 3 above treats vendor/technology selection as roadmap work, not a settled input.
+- **Production hardening beyond PoC scope.** Each phase's deliverable is a demonstration sized to retire a specific risk, not a shipped, supported product — the gap between "PoC deliverable" and "fielded system" is real and is not closed by this roadmap alone.
+
+## 10.4 Why Now
+
+§1.1–§1.2 and §7.1 already make the underlying case: the gap between "administrative claim" and "cryptographic fact" is a real, quantifiable insider-threat and non-repudiation surface, and it exists in every organization that currently substitutes a witnessed procedure or an access-control policy for genuine multi-party mathematical enforcement. What has changed is not that argument — it is that §3's core is no longer speculative. A funder is not being asked to bet on whether threshold recovery generalizes past file decryption; §4's design already shows that it does, without new cryptography. The ask is narrower and lower-risk than that: fund the engineering to build what the mathematics already permits.
+
+# 11. Intellectual Property and Licensing Posture
+
+Status: open decision — deliberately unresolved.
+
+§8.3 named this rather than resolved it: this project has no chosen license, no stated IP-ownership structure for future work, and — as of this writing — no patent filing behind the SPAC-layer novelty §8.2 describes, though pursuing one is a stated intent rather than an open question. What follows states the actual trade-off this decision turns on, is explicit about what is and isn't decided yet, and flags one specific, time-sensitive consequence of this whitepaper's own existence that is worth acting on before the licensing question itself is settled.
+
+## 11.1 The Trade-off This Decision Turns On
+
+This paper's stated goals pull in different directions here: awareness of a novel technology implementation favors making it inspectable; a fundable, IP-protected asset favors keeping the differentiated layer exclusive. Neither posture below is recommended over another here — that is the open decision — but each has a distinct cost against the other goal.
+
+| Posture | Serves Awareness | Serves an IP-Protected Asset | Cost |
+|---|---|---|---|
+| Open core: base scheme (§1–§3) open, SPAC layer (§4+) closed | Base scheme — most of what demonstrates the core guarantee actually working — is publicly inspectable and runnable | SPAC layer, where §8.2's novelty claims live, stays exclusively controlled | Requires drawing and maintaining a clean boundary as the SPAC layer gets built out (§10 Phases 2–4); a boundary drawn wrong risks disclosing patent-relevant material inadvertently |
+| Fully open | Maximum — everything, including future SPAC work, publicly inspectable | Minimal — no exclusivity to license, sell, or hold as a funding asset; monetization would have to come from services or support rather than the technology itself | Directly undercuts §8.3's argument that the SPAC layer's value depends on being a defensible, reduction-to-practice asset rather than a public description |
+| Fully closed | Minimal beyond this whitepaper — no code to inspect or verify, weakening the credibility a working demo currently provides | Maximum — full exclusivity preserved for negotiation | Undercuts "awareness of a novel technology" directly; a funder or reviewer has only prose to evaluate until access is separately granted |
+| Undecided (current state) | Whatever is already public stays public by default | Nothing forfeited, but nothing secured either — a later filing's priority date only protects what's disclosed as of that date | Not actually neutral: every commit and every distributed copy of this whitepaper made before a filing or a chosen license is a fact that could later matter to a patent's novelty/priority analysis, or to what a later-chosen license would be read to cover |
+
+## 11.2 What Is Already Decided: Intent to Pursue Patent Protection
+
+Unlike the licensing posture above, this part isn't open: pursuing patent protection for the SPAC-layer novelty in §8.2 — most plausibly the Fielded Prime Element hardware-binding construction and the SPAC generalization itself — is a stated intent. No provisional or non-provisional application has been filed as of this writing.
+
+That gap between intent and filing is the one item in this section worth flagging as time-sensitive rather than merely open. §8.2 and §4 already describe the Fielded Prime Element and SPAC generalization in enough technical depth to function as a public disclosure once this whitepaper is distributed outside a confidential circle — and most patent systems outside the U.S. apply absolute novelty, where a public disclosure before filing forecloses patent rights entirely, with no grace period. The U.S. system's own grace period is narrower and more conditional than it's often assumed to be. This isn't a legal conclusion — it's a reason to treat "file before wide distribution" as the default assumption to bring to counsel, rather than a decision that can wait until after this document has already done its job of soliciting interest.
+
+## 11.3 Recommended Next Step
+
+Consult patent counsel about a provisional filing covering the SPAC-layer material before this whitepaper, or any version of it carrying §4/§8.2's level of detail, circulates beyond a confidential audience. A provisional application is comparatively low-cost and fast, preserves a priority date without requiring full claims or prosecution immediately, and — consistent with §9's TRL 2 rating for this layer — does not require the underlying technology to be built first. Where a funder or reviewer needs to see this level of detail before a filing is in place, an NDA is the standard alternative; which of the two (or both) fits a given conversation is exactly the kind of judgment call that belongs to counsel, not to this whitepaper.
+
+## 11.4 What This Section Does Not Claim
+
+- Does not claim a patent has been filed, is pending, or has been granted.
+- Does not claim a license has been chosen for any part of this project's code.
+- Is not legal advice. The trade-offs above are this project's own structural and business observations, not a legal conclusion — the actual decisions belong with IP/patent counsel.
 
 # Appendix A: Shamir's Secret Sharing, Explained
 
