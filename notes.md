@@ -1,3 +1,35 @@
+# Session notes — 2026-08-28 (Claude Code: reconciled v2.2JD's leaner edit into v2.3, produced whitepaper v2.3.2)
+
+## What happened
+
+User had a hand-edited `docs/SHARDIC_White_Paper_v2.2_with_figuresJD.docx` (JD's editorial pass, made directly in Word/LibreOffice, no corresponding `.md`) and asked to reconcile its "leaner and crisper" early-text changes into v2.3, producing a v2.3.2 that keeps v2.3's full content (the §8–11 additions from the 2026-08-17 session) with JD's tightening applied.
+
+**Diffed JD's edit against the unedited v2.2 baseline** (`pandoc` both docx → markdown, `diff -u`) rather than guessing at "leaner" from prose alone. The only real content change turned out to be structural, not line-level wordsmithing: JD deleted **§4.7** ("Codeword vs. shardic-envelope for SPAC Trustee Shares") entirely, plus cleaned up its two cross-references (Reader's Guide paragraph, §6.4). Everything else in the diff was pandoc's internal image-rId renumbering — cosmetic, not real.
+
+**Conflict found and escalated rather than resolved silently:** v2.3 later added §4.8 ("SPAC Share Protection: High-Entropy Key Generation"), which explicitly composes with §4.7's delivery-axis framing and cross-references it by name — so a mechanical deletion of §4.7 in v2.3 would break §4.8's argument. Used `AskUserQuestion`; user chose **"cut §4.7, rewrite §4.8 standalone."**
+
+**Merged §4.7 and §4.8 into one section**, now `## 4.7 SPAC Share Protection: Delivery, Entropy Source, and the Field-Deployment Opt-Out`: folded §4.7's field-deployment case (device seizure/forensics, communications-denied environment, PAL precedent) fully into the merged section rather than leaving a dangling reference, trimmed one paragraph that duplicated the "Why ~2^100 Is Enough" subsection's deeper treatment, and updated all five downstream cross-references (Reader's Guide, §6.1–6.3 intro, §6.4, the §8 comparison table's BIP39 row, the §8.2 differentiation bullet). Confirmed via `diff` that the v2.3→v2.3.2 markdown diff touches exactly these six hunks and nothing else.
+
+Regenerated the docx/html twins via the `shardic-doc-pipeline` skill's reference-doc pipeline (`SHARDIC_White_Paper_v2.3_with_figures.docx` as `--reference-doc`, then `fix_docx.py`). Verified properly: 405 style remaps applied (nonzero, expected), table count unchanged at 10 (matches v2.3 — no tables added/removed, just relocated), page count unchanged at 67, rendered the §4.7 table to PNG and confirmed real borders/columns rather than the known flattened-paragraph corruption bug.
+
+New files came out owned by `root` (Bash-tool sandbox artifact, not present in the rest of the repo) — flagged to the user, not fixed (no passwordless sudo available in-session).
+
+Committed as `e32dd27` (author set explicitly via `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL` env vars for this one commit, since the Bash tool's shell had no git identity configured — did not touch `git config` per standing instruction) and pushed to `origin/main`.
+
+User separately asked to close the JD and v2.3 docx files in LibreOffice — found both already closed (no `soffice` process running, no `.~lock.*` files present) by the time of the request, likely from the `soffice --headless` PDF-verification runs during this session or the user closing them manually; nothing left to do.
+
+## State at end
+
+Working tree clean. New files: `docs/shardic_white_paper.v2.3.2.md`, `docs/SHARDIC_White_Paper_v2.3.2_with_figures.docx`, `docs/shardic_white_paper232.html`. Pushed to GitHub as `e32dd27`.
+
+## Possibly worth following up
+
+- The two files that motivated this session — `SHARDIC_White_Paper_v2.2_with_figuresJD.docx` and `SHARDIC_White_Paper_v2.3_with_figures.docx` — are themselves still untouched/uncommitted-beyond-existing in git; only the new v2.3.2 trio was added. No decision was made about whether v2.3.2 supersedes v2.3 going forward or whether both stay live.
+- New v2.3.2 files are root-owned in the working tree (see above) — cosmetic given git doesn't care about uid, but worth a `chown` if the user hits a permission error editing them directly outside Claude Code.
+- Same two follow-ups from 2026-08-17 remain open and untouched this session: the patent-counsel consult (§11.2/§11.3, time-sensitive) and the two undrafted gaps (benchmark data, team/track-record section).
+
+---
+
 # Session notes — 2026-08-17 (Claude Code: reviewed WP231_improve_ideas.MD, added four new funding-oriented WP sections — §8 Related Work, §9 Technology Readiness, §10 Path to PoC, §11 IP/Licensing)
 
 ## What happened
