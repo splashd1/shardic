@@ -1,3 +1,42 @@
+# Session notes — 2026-08-29 (Claude Code: drafted whitepaper v3 — generalized "shardic encryption key" terminology, AI mutual-oversight thesis, RAIN framework, then a full structural reorg per user feedback)
+
+## What happened
+
+Started with a chown fix: last session's Bash-tool-as-root left `/imgs/git/shardic` root-owned, which made git refuse to operate ("dubious ownership"). Worked around it in-session with `git config --global --add safe.directory` (user's explicit choice via `AskUserQuestion`), then the user ran `sudo chown -R splashd:splashd` themselves in a real terminal (the `!`-passthrough exec has no TTY for a sudo password prompt) — repo ownership is now fully back to the user except four harmless git-internal bookkeeping files (`ORIG_HEAD`, commit-graph cache), left alone per the user's call.
+
+**Major ask: start a v3 rewrite of the whitepaper**, seeded from `docs/shardic_white_paper.v2.3.2.md` into new `docs/shardic_white_paper.v3.md` (untracked, not yet committed — still drafting). User's revision plan, in stages across this session:
+
+1. **Generalize "codeword" into "shardic encryption key."** Replaced the codeword-centric framing with a per-share protection key sourced from one of four pluggable derivation mechanisms: KDF-from-a-memorized-secret (codeword is now this *one instance*, not the general concept), shardic envelope, external hardware token, or another mainstream key-generation mechanism. Per the project's own nomenclature glossary (loaded via the `shardic-nomenclature` skill), used "share" rather than "shard" for what's protected at rest — the user's own phrasing said "shard" loosely; flagged and corrected to the settled term. Rewrote §3.3 (renamed from "Codeword-Derived Key Protection of Shares"), trimmed §2's CLI/`python3 vault_create.py` transcripts down to conceptual-only (pointing to the README instead), and touched §1.6/§3.4–3.6 for terminology consistency.
+2. **Added an AI-human mutual-oversight thesis**, catalyzed by the existing Vignette D (hybrid human-AI policy gates): shardic enforces human-in-the-loop control over AI-initiated courses of action, and the converse — AI validation against a rogue/coerced human-initiated one — as the same D-of-T math, just with trustee slots assigned across human/AI classes. Added as new §4.8, cross-referenced from Abstract/Reader's Guide/§7 Summary/§8 Related Work.
+3. **Named and drafted RAIN** (Redundant, Always-invoked, Independent implementations, Non-bypassable) as the design framework for a *critical* SPAC deployment, added as new §4.9 — Always-invoked and Non-bypassable restate existing §4.6/§6.6 content under the new name; Redundant and Independent implementations are genuinely new (trustee/evaluator/data-feed/delivery-path redundancy; diverse AI evaluators, diverse firmware/code paths, independent approval chains). Explicitly flagged as a framework whose worked employment models are a later pass, not exhaustive yet.
+
+**User reviewed and requested a full structural reorg**, executed in full this session:
+
+- §4.7 abbreviated from ~9 paragraphs to 3 (delivery/entropy-source axes + DRBG-parity-with-DEK default only); the opt-out bullets, field-deployment case, and both "why 2^100 is enough"/"is eight words realistic" subsections moved to a **new Appendix B**.
+- §4.8 (AI-oversight thesis) relocated into the missions chapter as new **§6.4**, immediately before Vignette D (§6.5) rather than living in the SPAC-ecosystem chapter.
+- §4.9 (RAIN) relocated into a **renumbered Security Discussion, now §5** (swapped ahead of Notional Missions, now §6) as new **§5.5**.
+- Old §6.2 (Codeword Modes) and §6.3 (Tuning Options) removed from the Security Discussion and folded into the new Appendix B alongside the relocated §4.7 material.
+- Swept all cross-references across the whole document (Abstract, Reader's Guide, §7 Summary + footnotes, §8–10) to the new section numbers — verified via grep afterward (zero stray `§4.8`/`§4.9`/old-range references remaining).
+- Applied light persuasive-tone edits at connective seams (Abstract, §4 intro, §7.1) per the user's stated overall goal: persuade the reader shardic is mature technology adapted to enable safe employment of AI-assisted analysis and course-of-action execution in high-value operations.
+- Built the reorganized file in scratchpad via incremental `cat >>` appends (to keep any single tool-output within limits) rather than one giant rewrite, then copied it into place; kept the pre-reorg version backed up in scratchpad for comparison.
+
+**User then flagged the draft as overly wordy** and said they'd hand-edit a section themselves to demonstrate the briefer tone they want, before resubmitting for review — no further prose edits made after that, per their explicit "I will provide a manual edit" signal.
+
+**Substantive correction from the user, not yet applied to the file:** RAIN was scoped inward (properties of shardic's own ceremony/deployment — trustee redundancy, evaluator diversity, etc.). The user's actual intent is that RAIN applies to the *target system's protected action* SPAC is gating: if the ceremony can be routed around, or isn't actually required for the desired end state, SPAC is "toothless protection" regardless of how good shardic's own math is. RAIN is the bar for judging whether the *target system* earned the guarantee shardic can offer it — not just a checklist for shardic's internal engineering. Acknowledged this in conversation; **still needs to be folded into §5.5's actual text** (and probably the Abstract/§4 intro's RAIN mentions) once the user's tone-edit sample comes back, so both fixes land in one pass.
+
+## State at end
+
+`docs/shardic_white_paper.v3.md` exists, fully reorganized per the structural feedback, but **not committed** — still mid-revision, explicitly paused for the user's manual tone edit. Nothing else in the working tree changed. A backup of the pre-reorg draft sits in this session's scratchpad only (not in the repo, not durable across sessions).
+
+## Possibly worth following up
+
+- **Next session should expect the user to hand back a manually-edited excerpt** demonstrating their preferred brevity — apply that tone across the rest of the document rather than re-litigating it, and fold in the RAIN target-system-scoping correction above at the same time.
+- v3.md is untracked — decide with the user when it's ready to commit, and whether v2.3.2 stays canonical until v3 is further along or gets superseded immediately.
+- All the same still-open items from the 2026-08-28 entry below remain untouched: whether v2.3.2 supersedes v2.3 going forward (though `docs/SHARDIC_White_Paper_v2.2_with_figuresJD.docx` was removed per that session's commit `2769822`, suggesting v2.3.2 is being treated as live), the time-sensitive patent-counsel consult (§11.2/§11.3), and the two undrafted gaps (benchmark data, team/track-record section) — v3 hasn't touched §8–11 content, only their cross-references.
+- Repo ownership fix (chown) is done; the four root-owned git-internal files are cosmetic and were deliberately left as-is.
+
+---
+
 # Session notes — 2026-08-28 (Claude Code: reconciled v2.2JD's leaner edit into v2.3, produced whitepaper v2.3.2)
 
 ## What happened
