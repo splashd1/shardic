@@ -4,8 +4,8 @@
 
 A two-frontend (CLI + GUI), threshold-recoverable encrypted vault.
 Encrypts a file/folder with AES-256-GCM under a random DEK, splits the
-DEK via Shamir's Secret Sharing (GF(256), byte-wise) into T shares with
-threshold D, and protects each share with a codeword. Recovery needs
+DEK via Shamir's Secret Sharing (GF(256), byte-wise) into T shards with
+threshold D, and protects each shard with a codeword. Recovery needs
 any D of T codewords — no single party (including the creator) can
 decrypt alone once the codewords are distributed.
 
@@ -40,12 +40,12 @@ Claude Code session needs to *not re-derive from scratch* or
 
 ## Key design decisions (rationale, so they don't get "fixed" by accident)
 
-- **Indexing shares without a mapping table**: metadata never records
-  which codeword unlocks which share. Recovery brute-trials each
-  entered codeword against every unmatched share record; AES-GCM's
+- **Indexing shards without a mapping table**: metadata never records
+  which codeword unlocks which shard. Recovery brute-trials each
+  entered codeword against every unmatched shard record; AES-GCM's
   auth tag is the correctness check. This is deliberate — it's what
   keeps the `.krypt` file safe to store/share without leaking
-  trustee-to-share assignment. Don't add a mapping field "for
+  trustee-to-shard assignment. Don't add a mapping field "for
   efficiency" — T is small (tens), the trial cost is negligible.
 - **Argon2id is optional, PBKDF2 is the zero-dependency fallback.**
   Creating a vault: if Argon2id is unavailable, warn + require

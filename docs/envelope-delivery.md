@@ -88,7 +88,7 @@ here:
   detection signal worth surfacing clearly, not swallowing.
 - Un-redeemed drops expire after a bounded TTL (days, not months). An
   expired, unredeemed drop should generate an operator-visible
-  log/notification, since it means that trustee's share is effectively
+  log/notification, since it means that trustee's shard is effectively
   stranded until someone re-wraps and re-deposits for them.
 
 ## Interface sketch

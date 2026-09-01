@@ -1,4 +1,4 @@
-# shardware-token, part 1: physical carriage of a shard (proposed, unimplemented)
+# shardware-token, part 1: physical carriage of an unsealed shard (proposed, unimplemented)
 
 **Status: design proposal.** Nothing described here exists in the
 codebase yet.
@@ -8,9 +8,9 @@ network path a shardic-envelope ceremony normally uses. Two distinct
 ideas share the name and are covered in separate docs:
 
 1. **Physical carriage** (this doc) — a hardware token *is* the
-   transport: a trustee's derived shard travels to the combiner on the
-   token itself instead of over the network, for ceremonies that want
-   an air-gapped or courier-based delivery step.
+   transport: a trustee's derived unsealed shard travels to the
+   combiner on the token itself instead of over the network, for
+   ceremonies that want an air-gapped or courier-based delivery step.
 2. **Hardware-backed key custody** — a token (smartcard, FIDO2/WebAuthn
    authenticator) holds the trustee's private key and performs
    unwrap/derive on-device; the network path
@@ -20,7 +20,7 @@ ideas share the name and are covered in separate docs:
    [shardware-token-key-custody.md](shardware-token-key-custody.md).
 3. **PUF-sealed embed/extract** — a hardened evolution of (1): the
    token is no longer dumb storage but a PUF/secure-element-backed
-   device that generates its own keypair, seals the shard
+   device that generates its own keypair, seals the unsealed shard
    non-extractably, and only releases it against a vault-signed
    extraction grant. Designed in
    [shardware-token-embed-extract.md](shardware-token-embed-extract.md) —
@@ -33,7 +33,8 @@ This doc designs (1) only.
 ## The problem this solves
 
 Every existing recovery path — base/prime CLI codewords, and
-shardic-envelope's `shard_envelope` POST to `/trustees/shard-reply` —
+shardic-envelope's `shard_envelope` (an unsealed shard envelope) POST
+to `/trustees/shard-reply` —
 assumes a live channel at recovery time: either a human typing a
 codeword into a prompt, or a trustee's device reaching the combiner
 over the network. Some ceremonies can't or won't accept that
@@ -47,7 +48,7 @@ and no guarantees."
 
 ## Key design insight: this needs no new crypto
 
-A `shard_envelope` is already `wrap()`-ed (X25519 ECDH + HKDF +
+A `shard_envelope` (an unsealed shard envelope) is already `wrap()`-ed (X25519 ECDH + HKDF +
 AES-256-GCM, per `shardic_envelope_crypto.py`) to the **combiner's**
 public key before it goes anywhere. That confidentiality guarantee has
 never depended on the transport — `pubkey-envelope-plugin.md`'s
@@ -58,7 +59,7 @@ device to the combiner. The hardware token itself can be genuinely
 dumb storage — it never needs to be a secure element, because there's
 nothing unencrypted on it to protect.
 
-This also means `submit_shard_reply()` (`demo/combiner/app.py:593`)
+This also means `submit_unsealed_shard_reply()` (`demo/combiner/app.py:609`)
 doesn't need to change at all. It already takes plain
 `(sub, session_id, shard_envelope)` — nothing about it is HTTP-specific.
 What's missing is only an **ingestion adapter** that reads those three
@@ -72,7 +73,7 @@ below — this is the actual open design problem, not the crypto).
 Trustee's device (unchanged):
   fetch pending codeword_envelope -- OVER THE NETWORK, registration-time
   unwrap locally, run try_match_word_prime() -- unchanged
-  derive shard, serialize_shard(), wrap() to combiner_pub -- unchanged
+  derive unsealed shard, serialize_unsealed_shard(), wrap() to combiner_pub -- unchanged
         │
         │   <-- this is the only step that changes -->
         │
@@ -87,7 +88,7 @@ Trustee's device (unchanged):
         ▼
    ┌───────────────────────────────────────┐
    │  Ingestion adapter (new, this doc)      │
-   │  reads token, calls submit_shard_reply  │
+   │  reads token, calls submit_unsealed_shard_reply│
    │  exactly as trustees_shard_reply() does │
    └───────────────────────────────────────┘
         │
@@ -101,7 +102,7 @@ finalize_recovery() / verify_recovery() -- unchanged
 |---|---|---|
 | **USB mass storage** | JSON file: `{sub, session_id, shard_envelope}` | Simplest to implement — any machine can read/write it, no special reader hardware. Bearer risk: whoever holds the drive holds the (still-encrypted) payload. |
 | **Smartcard / CCID applet** | Same JSON, or a compact binary encoding, in an applet's data object | Needs a card reader at both ends; buys a PIN gate on read/write that a bare USB drive doesn't have, at real implementation cost (applet development, reader driver support). |
-| **NFC tag** | Same JSON, size-permitting (typical NTAG21x: ~144–888 bytes — a shard envelope plus session_id/sub comfortably fits) | Tap-to-write/tap-to-read UX, no cable; more exotic reader requirement on the combiner side than USB. |
+| **NFC tag** | Same JSON, size-permitting (typical NTAG21x: ~144–888 bytes — an unsealed shard envelope plus session_id/sub comfortably fits) | Tap-to-write/tap-to-read UX, no cable; more exotic reader requirement on the combiner side than USB. |
 | **Printed QR code** | Base64/JSON payload, if it fits QR's capacity | Arguably not "hardware" at all, but worth naming — a printed code is the *auditable-by-eye* extreme of this same idea (see chain-of-custody note below), and needs no device at all beyond a printer and a camera. |
 
 Recommendation: **USB mass storage as the reference implementation.**
@@ -116,13 +117,13 @@ redesign.
 
 The network path's `sub` doesn't come from the envelope — it comes
 from a verified Keycloak bearer token, checked at the HTTP layer
-before `submit_shard_reply()` is ever called
+before `submit_unsealed_shard_reply()` is ever called
 (`app.py`'s route handler, not shown to the trustee-facing crypto at
 all). `wrap()`/`unwrap()` themselves authenticate *nothing* about the
 sender — an envelope only proves it was encrypted to the combiner's
 public key, never who encrypted it. Take away the live bearer-token
 session, and **there is currently no cryptographic assertion of "this
-shard came from trustee X" left at all** — physical carriage would be
+unsealed shard came from trustee X" left at all** — physical carriage would be
 trading a real authentication mechanism for an implicit one (whoever
 carried the token said whose it was), unless something replaces it.
 
@@ -171,7 +172,7 @@ embed/extract doc is the answer once the medium is smarter.
   guarantee was a property of a *server* enforcing single-read on a
   drop point it controls — that doesn't exist for a physical medium
   nobody's server holds. What *does* still hold, unchanged: `session["replied"]`
-  in `submit_shard_reply()` already makes a second submission for the
+  in `submit_unsealed_shard_reply()` already makes a second submission for the
   same `sub` an idempotent no-op, so a duplicate or re-copied token
   can't double-count — that guarantee is at the combiner's ingestion
   step, not the medium, so it survives regardless of which physical
@@ -192,7 +193,7 @@ embed/extract doc is the answer once the medium is smarter.
   more for NFC's tighter capacity than for USB).
 - Whether `session_id` staleness needs an explicit expiry check at
   ingestion (a token written for a since-abandoned recovery session
-  attempting to feed a *new* session) — `submit_shard_reply()` already
+  attempting to feed a *new* session) — `submit_unsealed_shard_reply()` already
   rejects a `session_id` mismatch against the current session, so this
   may already be covered; worth a test to confirm rather than assuming.
 - Whether the ingestion adapter is a CLI (`shardware_ingest.py

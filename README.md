@@ -106,7 +106,7 @@ government and business scenarios.
   types the resulting codeword into `vault_recover.py`/the GUI,
   unchanged from today).
 - [`docs/shardic-envelope-explainer.html`](docs/shardic-envelope-explainer.html) — a static, illustrated walkthrough of the shardic-envelope ceremony's four phases (Formation, Protected & Dormant, Threshold-Proof, Finalize & Verify), for anyone who can't run the live `demo/` stack. Open it directly in a browser.
-- [`docs/nomenclature.md`](docs/nomenclature.md) — the canonical glossary and lifecycle-state vocabulary for shardic's domain objects (vault, share, shard, trustee, combiner, etc.), grounded in actual code usage. Also available as a Claude Code skill (`.claude/skills/shardic-nomenclature/`) that loads automatically for naming-sensitive work.
+- [`docs/nomenclature.md`](docs/nomenclature.md) — the canonical glossary and lifecycle-state vocabulary for shardic's domain objects (vault, shard, unsealed shard, trustee, combiner, etc.), grounded in actual code usage. Also available as a Claude Code skill (`.claude/skills/shardic-nomenclature/`) that loads automatically for naming-sensitive work.
 - [`docs/sss_explained_for_shardic.md`](docs/sss_explained_for_shardic.md) — a standalone, complete explainer of Shamir's Secret Sharing: the geometric intuition, the precise polynomial construction, why the arithmetic runs over GF(256), and how shardic builds on it. The white paper's §1.4 gives a shorter in-context version of the same intuition before §3.2's mechanics; this is the full reference.
 - [`docs/shardic_white_paper.v.1.2.md`](docs/shardic_white_paper.v.1.2.md) — the shardic white paper: motivation, operator walkthroughs, the underlying cryptographic mechanics, and a security discussion of trade-offs (including shardic-envelope's impact).
 
@@ -169,7 +169,7 @@ full picture (memorable / dictionary / synthetic / `--strong-words`).
 Distribute each `trustee_N.txt` to one trustee out-of-band, then delete
 them from this machine. The `.krypt` file can be stored, emailed, or
 uploaded anywhere — it leaks no information about which codeword belongs
-to which share (see "Indexing without a mapping table" below).
+to which shard (see "Indexing without a mapping table" below).
 
 Recover (interactive prompt for 3 codewords):
 ```
@@ -197,7 +197,7 @@ automatically (and still understands older split-file vaults — see below).
 ### Codeword modes
 
 Four ways to generate codewords, all going through the same
-KDF+AES-GCM per-share protection and all reported with an estimated
+KDF+AES-GCM per-shard protection and all reported with an estimated
 combinatorial-entropy figure (in bits) so you can compare them
 directly. Pick one — `--memorable` and `--strong-words` are mutually
 exclusive, since they optimize for opposite things.
@@ -246,7 +246,7 @@ exclusive, since they optimize for opposite things.
   ```
 
 All of this is purely a generation-time choice — recovery just tries
-whatever string a trustee enters against each share's KDF+AES-GCM
+whatever string a trustee enters against each shard's KDF+AES-GCM
 check (see `vault_core.try_match_word`), so none of it touches the
 `.krypt` format or breaks compatibility with codewords generated
 under a different mode before these flags existed.
@@ -399,11 +399,11 @@ going forward.
    once. GCM gives you both confidentiality and tamper detection.
 3. **Shamir split (GF(256), byte-wise)**: same construction as the
    classic `ssss` tool — each byte of the DEK gets an independent
-   random polynomial of degree `D-1`; each share evaluates all 32
-   polynomials at the same x-coordinate. Any `D` shares reconstruct
+   random polynomial of degree `D-1`; each shard evaluates all 32
+   polynomials at the same x-coordinate. Any `D` shards reconstruct
    the DEK via Lagrange interpolation; any `D-1` reveal *nothing*
    (information-theoretic security, not just computational).
-4. **Per-share protection**: each share is itself AES-256-GCM
+4. **Per-shard protection**: each shard is itself AES-256-GCM
    encrypted under a key derived from a random codeword, using
    either Argon2id (preferred, memory-hard) or PBKDF2-HMAC-SHA256
    (zero extra dependency fallback) — see `kdf.py`.
@@ -412,7 +412,7 @@ going forward.
    metadata block, then the raw ciphertext bytes (not base64-wrapped, so
    there's no ~33% size penalty). See `krypt_container.py`. There's
    nothing to accidentally separate or lose track of anymore.
-6. **Indexing without a mapping table**: the metadata stores each share
+6. **Indexing without a mapping table**: the metadata stores each shard
    as an opaque `{salt, nonce, ciphertext}` triple — nothing ties a
    record to a trustee or a word. On recovery, each entered codeword is
    tried against every not-yet-matched record; GCM's authentication tag
@@ -456,14 +456,14 @@ decrypts successfully.
 
 **How it works**: a random mask the same length as the DEK is
 generated. The prime trustee's codeword protects that mask directly
-(a one-time pad, not a Shamir share). The DEK, XORed with the mask, is
-then split with the ordinary `gf256_sss` scheme into the pool shares
+(a one-time pad, not a Shamir shard). The DEK, XORed with the mask, is
+then split with the ordinary `gf256_sss` scheme into the pool shards
 (threshold `D-1`, count `T-1`). Recovery needs the mask *and*
-`D-1` pool shares to reconstruct the masked DEK and unmask it — without
-the mask, the pool shares alone (even all of them) are information-
+`D-1` pool shards to reconstruct the masked DEK and unmask it — without
+the mask, the pool shards alone (even all of them) are information-
 theoretically indistinguishable from random. See `gf256_sss_prime.py`
 for the full construction and `vault_core_prime.py` for how it's wired
-into vault creation/recovery. Share records keep the base scheme's
+into vault creation/recovery. Shard records keep the base scheme's
 "opaque `{salt, nonce, ciphertext}`, shuffled, no mapping table"
 property — which record is the prime one isn't visible from the
 `.krypt` file's structure, only by decrypting it with the right
@@ -495,7 +495,7 @@ plain `vault_create.py` output with plain `vault_recover.py`.
   other modes. `--strong-words` (see "Codeword modes" above, only
   available outside memorable mode) raises the bits-per-character of
   each word without adding length, if codewords will be typed/pasted
-  rather than spoken or handwritten. Note that because each share is
+  rather than spoken or handwritten. Note that because each shard is
   cracked independently (see "Indexing without a mapping table"
   above), a higher threshold `D` does *not* let you get away with
   weaker codewords — every codeword individually needs to carry real
@@ -511,7 +511,7 @@ plain `vault_create.py` output with plain `vault_recover.py`.
   "Customize Argon2id cost" (GUI) if you need faster recovery on
   constrained hardware, or raise them further for even more margin.
 - **Threshold security is information-theoretic; codeword security is
-  not.** Getting `D-1` shares gives an attacker literally zero bits
+  not.** Getting `D-1` shards gives an attacker literally zero bits
   about the DEK regardless of computing power. Getting a codeword
   right is a matter of guessing effort — that's the piece to size
   according to your threat model (word length, word count, and KDF

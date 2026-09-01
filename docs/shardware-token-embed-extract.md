@@ -5,7 +5,7 @@ codebase yet — no PUF hardware, no cert chain, no admin routes. This
 is a hardened evolution of
 [shardware-token.md](shardware-token.md#physical-medium-options)'s
 physical-carriage idea: instead of dumb USB storage carrying an
-already-wrapped, still-anonymous shard, the token itself is a
+already-wrapped, still-anonymous unsealed shard, the token itself is a
 PUF/secure-element-backed device with its own identity, sealed
 storage, and a live authorization step at extraction. It directly
 answers the parent doc's ["identity without a live
@@ -40,7 +40,7 @@ hardware identity, gated by a live (but minimal) operator decision.
   hand over a software-emulated fake.
 - **TPM 2.0 sealing** (`TPM2_Seal`/`TPM2_Unseal`) — the reference model
   for "this blob only unseals on this exact chip," which is what the
-  token's own storage needs to do with its shard.
+  token's own storage needs to do with its unsealed shard.
 
 ## Embed sequence (at vault creation)
 
@@ -53,20 +53,20 @@ T tokens are on hand at the combiner. Per token, sequentially:
 2. Token hands its pubkey + attestation statement to the combiner
    over a local, mutually authenticated channel (GlobalPlatform-style).
 3. Combiner verifies attestation, then responds with:
-     - the shard, wrapped to the token's pubkey
+     - the unsealed shard, wrapped to the token's pubkey
        (shardic_envelope_crypto.wrap() -- unmodified)
      - the vault's own root pubkey (see extraction, below)
-4. Token seals {wrapped_shard, vault_root_pubkey} into its own
+4. Token seals {wrapped_unsealed_shard, vault_root_pubkey} into its own
    PUF-backed storage. The storage-unwrap key is derived from the
    PUF response combined (KDF) with a local unlock factor -- see
    "Token-side possession factor" below -- so neither the silicon
    alone nor a guessed factor alone reconstructs it.
-5. Combiner destroys its own plaintext copy of the shard immediately
-   -- extends the existing _secure_delete pattern already used for
-   codeword envelopes (app.py:496), just applied one step earlier
-   (the shard itself never has an at-rest copy anywhere but the
-   token, versus today's model where it's briefly a server-side
-   plaintext before wrap()).
+5. Combiner destroys its own plaintext copy of the unsealed shard
+   immediately -- extends the existing _secure_delete pattern already
+   used for codeword envelopes (app.py:496), just applied one step
+   earlier (the unsealed shard itself never has an at-rest copy
+   anywhere but the token, versus today's model where it's briefly a
+   server-side plaintext before wrap()).
 ```
 
 ## Extraction sequence (at recovery)
@@ -75,7 +75,7 @@ T tokens are on hand at the combiner. Per token, sequentially:
 1. Token inserted. Generates a fresh random nonce locally.
 2. {session_id, token_pubkey_hash, nonce} surfaced to the operator
    -- reusing the existing _broadcast() SSE pattern (recovery_started,
-   shard_received) as a new extraction_requested event: "token
+   unsealed_shard_received) as a new extraction_requested event: "token
    belonging to trustee X requests extraction, awaiting authorization."
 3. Operator approves (single operator -- see below). Combiner's
    *intermediate* signing key signs an extraction grant naming this
@@ -88,8 +88,9 @@ T tokens are on hand at the combiner. Per token, sequentially:
      c. token_pubkey_hash in the grant == its own pubkey
      d. nonce in the grant == the one it just generated
      e. now is within [not_before, not_after]
-5. Only then: unseal, release the wrapped shard for delivery to the
-   combiner (over whatever medium -- network or another physical hop).
+5. Only then: unseal, release the wrapped unsealed shard for delivery
+   to the combiner (over whatever medium -- network or another
+   physical hop).
 ```
 
 ## The two-tier certificate chain
@@ -173,7 +174,7 @@ shared interface rather than two similar-but-different ones:
 class LocalUnlockFactor(Protocol):
     """Discrete, role-transferable local-authorization input required
     -- alongside a valid PUF/hardware unseal -- before sealed storage
-    (a trustee token's shard, or a fielded system's mask) is released.
+    (a trustee token's unsealed shard, or a fielded system's mask) is released.
     Bound to a category (possessed/known/inherent), never assumed to
     be exhaustive of examples within a category, so the underlying
     custodian or trustee can be reassigned/re-provisioned without
@@ -222,7 +223,7 @@ storage with an attestation story.
 - Whether grant-authorization itself needs its own audit-logging
   design beyond the existing `_broadcast()` event stream, given the
   residual "rubber-stamp" risk named above.
-- How the wrapped shard gets from the token to the combiner after
+- How the wrapped unsealed shard gets from the token to the combiner after
   extraction -- network, or a second physical hop -- not decided here;
   see [shardware-token.md](shardware-token.md#physical-medium-options)
   for the transport options this doc doesn't re-litigate.

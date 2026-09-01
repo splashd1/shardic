@@ -92,7 +92,7 @@ rather than an informal library call, given what's plugged into it.
 **Ephemeral-at-point-of-use has to extend past the combiner.** This
 project already treats "never persist the plaintext longer than
 necessary" as load-bearing -- `_secure_delete` after wrapping
-(`app.py:496`), no server-side shard persistence in the
+(`app.py:496`), no server-side unsealed shard persistence in the
 `shardware-token` designs. The same discipline now has to reach into
 the *consuming* system: PT SPAC should exist in the client module's
 memory only long enough to hand off to (or itself trigger) the
@@ -115,13 +115,13 @@ exactly the required property, just for a human prime trustee:
 # gf256_sss_prime.py:51-54
 mask = secrets.token_bytes(len(secret))
 masked_secret = bytes(a ^ b for a, b in zip(secret, mask))
-pool_shares = split_secret(masked_secret, threshold=pool_threshold, total_shares=pool_size)
+pool_shards = split_secret(masked_secret, threshold=pool_threshold, total_shards=pool_size)
 ```
 
 `reconstruct_secret_with_prime()` (same file, lines 57-63) is the exact
 inverse: Shamir-reconstruct `masked_secret` from any
-`pool_threshold`-of-`pool_size` shares, then XOR against `mask`. Neither
-the mask alone nor the pool shares alone reconstruct anything -- an
+`pool_threshold`-of-`pool_size` shards, then XOR against `mask`. Neither
+the mask alone nor the pool shards alone reconstruct anything -- an
 algebraic guarantee, not a policy one, already implemented and
 self-tested (`gf256_sss_prime.py:66-79`) and already wired through
 `vault_core_prime.py`'s `try_match_word_prime`/
@@ -143,10 +143,10 @@ mask        = the fielded system's own hardware-sealed secret
               used only to receive a wrapped MAC key, is introduced
               later in this doc -- see "PT/CT swap integrity"'s Key
               sources.
-pool_shares = ordinary trustee shares, pool_threshold-of-(T-1),
+pool_shards = ordinary trustee shards, pool_threshold-of-(T-1),
               delivered by shardware-token or network exactly as
               already designed elsewhere in this project
-DEK         = reconstruct_secret_with_prime(mask, pool_shares)   -- unmodified
+DEK         = reconstruct_secret_with_prime(mask, pool_shards)   -- unmodified
 CT_SPAC     = AES-256-GCM(PT_SPAC, DEK)                          -- unmodified vault_core.py path
 ```
 
@@ -154,13 +154,13 @@ Copy `CT_SPAC` to different hardware, bring a full legitimate trustee
 quorum along -- reconstruction still fails, because `mask` is bound to
 one specific piece of silicon and was never extractable from it. The
 only new component is a client module that (a) unseals `mask` locally
-at arming time, (b) collects `pool_threshold` pool shares from human
+at arming time, (b) collects `pool_threshold` pool shards from human
 trustees, and (c) calls the existing reconstruction function. Nothing
 in `vault_core_prime.py` or `krypt_container.py` changes.
 
 **Naming this role**: a `Fielded Prime Element` is the device, `mask`
 is the value it holds -- the same device/value split already used for
-`shardware-token`/`shard` elsewhere in this project. "Prime trustee"
+`shardware-token`/`unsealed shard` elsewhere in this project. "Prime trustee"
 in `docs/nomenclature.md` stays the human case by default; a
 `Fielded Prime Element` is the hardware-embodied instance of that same
 role, named distinctly rather than stretching "trustee" (which reads
@@ -171,7 +171,7 @@ also mean a piece of silicon.
 
 Only holds if reconstruction happens **inside the fielded system's own
 boundary** -- it acts as its own combiner for this ceremony, receiving
-pool shares directly (network or physical presentation) rather than a
+pool unsealed shards directly (network or physical presentation) rather than a
 separate combiner reconstructing DEK and shipping it (or the decrypted
 PT SPAC) onward afterward. The latter reintroduces a transport hop for
 a live secret and doubles the attack surface for no benefit; avoid it
@@ -349,7 +349,7 @@ Phase 2 -- Vault creation / CT_SPAC generation (wrap operator):
   1. Verify Ed25519_Verify(approver_pubkey, approval_cert) -- refuse on failure
   2. Verify KDF(salt, PT_SPAC) == commitment                -- refuse on failure
   3. DEK = random(32 bytes)
-  4. mask, pool_shares = split_secret_with_prime(DEK, pool_threshold, pool_size)  -- unmodified
+  4. mask, pool_shards = split_secret_with_prime(DEK, pool_threshold, pool_size)  -- unmodified
   5. CT_SPAC = AES-256-GCM(PT_SPAC, DEK)                                          -- unmodified
   6. mac_key = random(32 bytes)
      tag = HMAC-SHA256(mac_key, PT_SPAC)
@@ -363,7 +363,7 @@ Phase 2 -- Vault creation / CT_SPAC generation (wrap operator):
 Phase 3 -- Arming (fielded client module, every ceremony -- fast path,
             per "Availability and latency (RTO)" below):
 
-  1. DEK = reconstruct_secret_with_prime(mask, pool_shares)      -- unmodified
+  1. DEK = reconstruct_secret_with_prime(mask, pool_shards)      -- unmodified
   2. candidate_PT_SPAC = AES-256-GCM_decrypt(CT_SPAC, DEK)
   3. mac_key = shardic_envelope_crypto.unwrap(wrapped_mac_key, field_privkey)
   4. Verify HMAC-SHA256(mac_key, candidate_PT_SPAC) == tag       -- refuse to arm on mismatch
@@ -403,7 +403,7 @@ Phase 3 -- Arming (fielded client module, every ceremony -- fast path,
   chain from `shardware-token-embed-extract.md`) -- **kept deliberately
   separate from the Approver's key**, even though both are rarely
   touched and high-value. They answer different questions:
-  `vault_root_key` governs *when pool shares get released* during
+  `vault_root_key` governs *when pool unsealed shards get released* during
   recovery; the Approver's key governs *whether the right thing was
   ever wrapped in the first place*. Sharing one key across both would
   quietly merge two authorities that should stay independent -- the
@@ -442,7 +442,7 @@ co-located or dispersed.
 
 | Option | Mechanics | Accessibility | Automation | Rough time |
 |---|---|---|---|---|
-| Pre-formed standing ceremony, push notification, one-tap response | Trustees already accepted invitations in advance; alert via push/SMS; single tap derives + submits the share | High -- anywhere with a data signal | High | seconds to ~10 min, bounded mostly by human reaction time |
+| Pre-formed standing ceremony, push notification, one-tap response | Trustees already accepted invitations in advance; alert via push/SMS; single tap derives + submits the unsealed shard | High -- anywhere with a data signal | High | seconds to ~10 min, bounded mostly by human reaction time |
 | Ad hoc formed ceremony, phone-tree/manual notification | No pre-forming; each trustee located and contacted individually, logs in and submits manually | Depends entirely on reachability at that moment | Low | tens of minutes to several hours (longer if unreachable) |
 | Co-located duty crew, in-person physical action | Trustees already physically present, act at a console or insert a shardware-token | High only within the facility | Low (physical), but fast -- remote reachability isn't a variable | seconds to a couple minutes, bounded by walk-to-station time |
 
@@ -451,7 +451,7 @@ machinery is the biggest lever here and needs no modification --
 pre-forming the ceremony converts "select, invite, wait for accept"
 into a one-time setup cost paid before the RTO clock starts.
 
-### Share delivery
+### Unsealed shard delivery
 
 Driver: transport medium -- network versus physical -- and for
 physical, distance/custody logistics; for network, whether the

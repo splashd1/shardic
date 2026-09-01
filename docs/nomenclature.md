@@ -9,10 +9,10 @@ same content also lives as a Claude Code skill
 (`.claude/skills/shardic-nomenclature/SKILL.md`) so future working sessions
 apply it automatically — this file is the human-readable, linkable form.
 
-**The one pair to never confuse:** *share* is at rest, in the vault,
-pre-match. *Shard* is in motion, post-match, en route to the combiner.
-They are near-homophones the project already committed to on purpose —
-not a reason to merge them.
+**The one pair to never confuse:** *shard* is at rest, in the vault,
+pre-match. *Unsealed shard* is in motion, post-match, en route to the
+combiner. Same underlying value, two different lifecycle stages —
+not a reason to merge the two names.
 
 ## Core terms
 
@@ -22,11 +22,11 @@ not a reason to merge them.
 | **`.krypt` container** | The vault's concrete on-disk form: magic header + length-prefixed JSON metadata + raw (uncompressed) ciphertext. Say "the `.krypt` container," not "the vault file," when precision matters. Legacy split-file vaults (`.crypt` + `metadata.json`) are the same concept in an older on-disk shape. | All schemes |
 | **DEK** (Data Encryption Key) | The random 256-bit key AES-256-GCM actually encrypts the archive under — the value Shamir's Secret Sharing splits. Never the plaintext itself, never a codeword directly. | All schemes |
 | **Codeword** | The human-facing secret string (memorable, dictionary, or synthetic mode) a trustee holds, and in the base/prime schemes types by hand at recovery. Called `word` in some function names (`try_match_word`) — same thing, shorter. | All schemes |
-| **Share** / **share record** | A sealed entry in `.krypt` metadata (`metadata["shares"]`), protected by a codeword-derived KDF key. *Pre-match*: nothing records which trustee or codeword unlocks it — recovery finds the match by trial, using AES-GCM's auth tag as the correctness check. | All schemes |
-| **Shard** | shardic-envelope only. The value a trustee *derives locally* after unwrapping its own codeword envelope and matching it: the prime's mask, or a pool trustee's `(x, y)` point. Wrapped and sent to the combiner — the combiner never receives a codeword, only shards. A shard only exists after a codeword has already been matched; it's a result, not a delivery mechanism. | shardic-envelope |
-| **Mask** | The prime trustee's share value in shardic-prime. A one-time-pad-style value layered over the ordinary Shamir split, not a point on the polynomial. "Prime shard" and "mask" name the same value once it's in motion during recovery — mask describes what it *is*, shard describes its *role*. | shardic-prime |
-| **Pool share** / **`(x, y)` point** | An ordinary Shamir point held by a non-prime trustee. Becomes a "pool shard" once derived and sent during recovery. | shardic-prime |
-| **Envelope** | A pubkey-wrapped payload (`wrap()`/`unwrap()`). The same word covers two payloads traveling in opposite directions — always qualify: **codeword envelope** (combiner→trustee, delivered at vault creation) vs. **shard envelope** (trustee→combiner, sent during recovery, using the "self-addressed envelope" pattern where the combiner's own pubkey rides along bundled inside the codeword envelope it sent). | shardic-envelope |
+| **Shard** / **shard record** | A sealed entry in `.krypt` metadata (`metadata["shards"]`; older vaults on disk use the legacy key `metadata["shares"]`, still read via a compatibility fallback), protected by a codeword-derived KDF key. *Pre-match*: nothing records which trustee or codeword unlocks it — recovery finds the match by trial, using AES-GCM's auth tag as the correctness check. | All schemes |
+| **Unsealed shard** | shardic-envelope only. The value a trustee *derives locally* after unwrapping its own codeword envelope and matching it: the prime's mask, or a pool trustee's `(x, y)` point. Wrapped and sent to the combiner — the combiner never receives a codeword, only unsealed shards. An unsealed shard only exists after a codeword has already been matched; it's a result, not a delivery mechanism. | shardic-envelope |
+| **Mask** | The prime trustee's shard value in shardic-prime. A one-time-pad-style value layered over the ordinary Shamir split, not a point on the polynomial. "Prime unsealed shard" and "mask" name the same value once it's in motion during recovery — mask describes what it *is*, unsealed shard describes its *role*. | shardic-prime |
+| **Pool shard** / **`(x, y)` point** | An ordinary Shamir point held by a non-prime trustee. Becomes a "pool unsealed shard" once derived and sent during recovery. | shardic-prime |
+| **Envelope** | A pubkey-wrapped payload (`wrap()`/`unwrap()`). The same word covers two payloads traveling in opposite directions — always qualify: **codeword envelope** (combiner→trustee, delivered at vault creation) vs. **unsealed shard envelope** (trustee→combiner, sent during recovery, using the "self-addressed envelope" pattern where the combiner's own pubkey rides along bundled inside the codeword envelope it sent). The wire field itself is still literally named `shard_envelope` in the demo's HTTP API (e.g. `POST /trustees/shard-reply`) — that field name wasn't part of this rename. | shardic-envelope |
 | **Fingerprint** | A short hash-based identifier of a public key, for a human to eyeball and compare — never used in the actual cryptographic matching or wrapping logic. | shardic-envelope |
 | **Trustee** | A party holding exactly one codeword (base/pool scheme) or one keypair plus one wrapped codeword envelope (shardic-envelope). | All schemes |
 | **Prime trustee** | shardic-prime only: the single mandatory trustee, required for every recovery regardless of threshold. The human case by default — see `Fielded Prime Element` below for the hardware-embodied instance of this same role. | shardic-prime |
@@ -34,7 +34,7 @@ not a reason to merge them.
 | **Threshold (D)** | Number of codewords/shards required to recover. | All schemes |
 | **Trustees (T)** | Total number of codewords/trustees issued. | All schemes |
 | **Pool threshold** | `D − 1`, shardic-prime only: required count among pool trustees, since the prime is separately mandatory. | shardic-prime |
-| **Combiner** | shardic-envelope/demo-specific: the service holding `.krypt` ciphertext and every wrapped envelope; handles registration, opens and tracks recovery sessions, combines received shards into the DEK. Never receives a plaintext codeword. | shardic-envelope |
+| **Combiner** | shardic-envelope/demo-specific: the service holding `.krypt` ciphertext and every wrapped envelope; handles registration, opens and tracks recovery sessions, combines received unsealed shards into the DEK. Never receives a plaintext codeword. | shardic-envelope |
 | **Recovery session** | One combiner-tracked recovery attempt, identified by a `session_id`. Deliberately ephemeral — doesn't survive a combiner restart, unlike vault creation. | shardic-envelope |
 | `VaultStore` (`Protocol`) | Pluggable backing store for the combiner's `.krypt` bytes, keyed by `vault_id`. Implemented: `demo/combiner/vault_store.py`'s `FilesystemVaultStore` is the only backend shipped (v1.0); SQL/NoSQL stay a future, config-selected alternate implementation. | shardic-envelope |
 | `shardic-operator` (Keycloak realm role) | Authenticated role required for every `/admin/*` combiner route. Implemented: `demo/keycloak/realm-export.json`'s role/client/user + `_require_operator()` in `demo/combiner/app.py`, replacing the old shared `COMBINER_ADMIN_TOKEN`. Separation-of-duties enforcement (an operator can't self-select as a ceremony trustee) is also implemented — see `initiate_ceremony()`. | shardic-envelope |
@@ -54,7 +54,7 @@ Design-stage terms from `docs/*.md` proposals — no code implements these yet.
 | `CredentialLookup` (`Protocol`) | Resolves a trustee's registered public key. | `docs/pubkey-envelope-plugin.md` |
 | `PublicKeyRecord` | The data shape backing `CredentialLookup`. | `docs/pubkey-envelope-plugin.md` |
 | `EnvelopeDropPoint` (`Protocol`) | Pull-based, single-read delivery point for a wrapped envelope. | `docs/envelope-delivery.md` |
-| `Fielded Prime Element` | Hardware-embodied instance of the prime-trustee role: a fielded system's own PUF/secure-element-sealed `mask`, standing in for a human prime trustee in `reconstruct_secret_with_prime()`. Device/value split parallels `shardware-token`/`shard` — the Element is the device, `mask` is the value it holds. Write lowercase in prose (`fielded prime element`), matching `prime trustee`/`pool trustee`. | `docs/spac-concept.md` |
+| `Fielded Prime Element` | Hardware-embodied instance of the prime-trustee role: a fielded system's own PUF/secure-element-sealed `mask`, standing in for a human prime trustee in `reconstruct_secret_with_prime()`. Device/value split parallels `shardware-token`/`unsealed shard` — the Element is the device, `mask` is the value it holds. Write lowercase in prose (`fielded prime element`), matching `prime trustee`/`pool trustee`. | `docs/spac-concept.md` |
 
 ## Lifecycle-state adjectives
 
@@ -66,8 +66,8 @@ listed string, don't invent a synonym for a state that already exists.
 |---|---|---|
 | **Trustee** | `unregistered` → `registered` → **`live`** → **`paused`** → `replied` | `live`/`paused` are real values (`STATE["trustee_status"]` in `demo/combiner/app.py`), driven by heartbeat timing. `registered`/`unregistered`/`replied` aren't currently named in code — proposed names for states that already functionally exist. |
 | **Vault** | `unformed` → `sealed` (colloquially `dormant`) → `recovering` → `recovered` → `verified` | `sealed` describes what happened (codewords destroyed); `dormant` describes how long it's stayed that way — both legitimate, not interchangeable. `recovered` and `verified` are separate combiner calls (`/admin/recovery/finalize` vs. `/admin/recovery/verify`) — a vault can be recovered without being verified. |
-| **Share** | `unmatched` → `matched` | Tracked via `used_indices` in `try_match_word[_prime]`. |
-| **Shard** *(shardic-envelope only)* | `derived` → `submitted` → `received` | `derived`: computed locally, hasn't left the device. `submitted`: wrapped and sent. `received`: combiner has unwrapped and accepted it (membership in `session["replied"]`). |
+| **Shard** | `unmatched` → `matched` | Tracked via `used_indices` in `try_match_word[_prime]`. |
+| **Unsealed shard** *(shardic-envelope only)* | `derived` → `submitted` → `received` | `derived`: computed locally, hasn't left the device. `submitted`: wrapped and sent. `received`: combiner has unwrapped and accepted it (membership in `session["replied"]`). |
 | **Envelope** | `sealed` → `pending` → `opened` | `pending` matches the real route name (`/trustees/pending-envelope`). `opened`: the receiving party has unwrapped it locally. |
 | **Ceremony** | `forming` → `formed` \| `failed` | Real values in `STATE["ceremony"]["status"]`. `formed`: every slot `accepted`, vault creation unlocked. `failed`: backup list exhausted before every slot could be filled. |
 | **Invitation slot** | `invited` → `accepted` \| `open` | Real values in each slot's `status` (`demo/combiner/app.py`). `open` is the lapsed-with-no-backup-left terminal state (implies the ceremony is `failed`); a lapsed slot with a backup available goes straight back to `invited` (backfilled) rather than passing through `open`. |
@@ -75,7 +75,7 @@ listed string, don't invent a synonym for a state that already exists.
 ## Applying this
 
 - Writing UI copy, log lines, or docs: prefer the exact terms above over
-  paraphrases — "share" and "shard" especially.
+  paraphrases — "shard" and "unsealed shard" especially.
 - Naming a new field, route, or concept: check whether it's actually a new
   *state* of an existing entity before reaching for a new noun.
 - New term needed: add it here (and to the skill) in the same style —

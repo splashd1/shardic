@@ -72,7 +72,7 @@ ever computes an `ArmResponse` — the ICD doesn't forward authorization
 material from the consuming system because the consuming system isn't
 a party to that authorization at all. This is the concrete payoff of
 the embedment-manual field sketch: everything in that table
-(`extraction_grant`, `local_unlock_assertion`, `pool_shares[]`,
+(`extraction_grant`, `local_unlock_assertion`, `pool_shards[]`,
 `masked_secret`) is internal to the client module's own boundary,
 never crosses the ICD.
 
@@ -113,7 +113,7 @@ settled, since a real cancel path will need its own value (e.g.
 `UNSUPPORTED_VERSION`. Deliberately coarse — enough to drive an
 operational response, not fine enough to leak which specific trustee
 or step failed, the same "don't leak more than the check requires"
-posture the rest of this project already takes with share-matching.
+posture the rest of this project already takes with shard-matching.
 
 ## `unlock_value` is single-use — a MUST, not a suggestion
 
@@ -188,8 +188,8 @@ this contract imposes.
 That raises a legitimate model this draft hadn't accounted for: the
 same trustee set, ceremony, and shardic-envelope/combiner
 infrastructure can wrap and embed **more than one SPAC**, each with its
-own discretely-defined DEK/Shamir split — its own shares/shards, never
-shared across SPACs even though the trustee roster and ceremony
+own discretely-defined DEK/Shamir split — its own shards/unsealed
+shards, never shared across SPACs even though the trustee roster and ceremony
 apparatus are — issued to the same registered trustees. At arm time,
 the specific function/SPAC being requested is named explicitly, and the
 trustee quorum approves *that* request, not a blanket "this ceremony's

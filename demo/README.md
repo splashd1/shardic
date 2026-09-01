@@ -21,11 +21,12 @@ container, generates its own keypair, and registers its public key with a
 trustee's codeword is pubkey-wrapped to their registered key instead of
 being printed to a file — the plaintext codeword is destroyed the moment
 every envelope is written. At recovery, each trustee's container decrypts
-its own envelope locally, derives its **shard** (the post-match Shamir
-value — the prime's mask, or a pool `(x, y)` point) using the project's
-existing, completely unmodified `vault_core_prime.try_match_word_prime`,
-and sends back only that shard, wrapped to the combiner's key. **The
-combiner never sees a codeword from any trustee, only shards** — and
+its own envelope locally, derives its **unsealed shard** (the post-match
+Shamir value — the prime's mask, or a pool `(x, y)` point) using the
+project's existing, completely unmodified
+`vault_core_prime.try_match_word_prime`, and sends back only that
+unsealed shard, wrapped to the combiner's key. **The combiner never sees
+a codeword from any trustee, only unsealed shards** — and
 pausing enough running trustee containers before recovery still succeeds,
 proving the threshold property live.
 
@@ -57,8 +58,8 @@ reuse in a real deployment:
   primaries).
 - **Trustees accept ceremony invitations automatically, with no
   interactive human decision.** This demo trustee is a headless
-  container, the same as it already is for registration and shard
-  replies — there's no one to ask "accept this invitation?" A trustee
+  container, the same as it already is for registration and unsealed
+  shard replies — there's no one to ask "accept this invitation?" A trustee
   that shouldn't participate in a given ceremony is simulated by pausing
   its container (`docker-compose pause`) *before* the ceremony is
   initiated, so it never polls to see the invitation — the same
@@ -279,7 +280,7 @@ locally, and reply:
 
 ```sh
 docker-compose logs -f trustee-alice trustee-bob trustee-carol
-# look for "shard submitted for session ..." from each
+# look for "unsealed shard submitted for session ..." from each
 ```
 
 **10. Finalize:**
@@ -315,7 +316,7 @@ docker-compose --profile candidates down -v
 | POST | `/trustees/register` | Bearer (Keycloak) | Register a trustee's public key. |
 | GET | `/vault/metadata` | none | Current `.krypt` metadata (not secret). |
 | GET | `/trustees/pending-envelope` | Bearer | Poll for a pending recovery envelope. |
-| POST | `/trustees/shard-reply` | Bearer | Submit a wrapped shard. |
+| POST | `/trustees/shard-reply` | Bearer | Submit a wrapped unsealed shard. |
 | GET | `/trustees/pending-invitation` | Bearer | Poll for a pending ceremony invitation. |
 | POST | `/trustees/invitation-response` | Bearer | Accept or decline a ceremony invitation. |
 | POST | `/admin/ceremony/initiate` | Bearer (Keycloak, `shardic-operator` role) | Initiate a ceremony: threshold, prime, pool, ordered backup list. |
@@ -323,7 +324,7 @@ docker-compose --profile candidates down -v
 | GET | `/admin/vault/download` | Bearer (Keycloak, `shardic-operator` role) | Download the created `.krypt` container's raw bytes. |
 | GET | `/admin/keycloak/group-members` | Bearer (Keycloak, `shardic-operator` role) | List the 7 candidates. |
 | POST | `/admin/recovery/start` | Bearer (Keycloak, `shardic-operator` role) | Arm a recovery session. |
-| POST | `/admin/recovery/finalize` | Bearer (Keycloak, `shardic-operator` role) | Combine collected shards, decrypt. |
+| POST | `/admin/recovery/finalize` | Bearer (Keycloak, `shardic-operator` role) | Combine collected unsealed shards, decrypt. |
 | POST | `/admin/recovery/verify` | Bearer (Keycloak, `shardic-operator` role) | Byte-for-byte compare recovered output against the original. |
 | GET | `/events` | none | Server-Sent Events stream backing the live dashboard. |
 | GET | `/dashboard` | none | The live dashboard itself. |

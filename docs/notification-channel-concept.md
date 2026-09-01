@@ -24,7 +24,7 @@ punted on how a trustee learns there's something to pull:
 That doc also names a second, distinct notification need in passing,
 for a different audience: when an unredeemed drop hits its TTL, "an
 operator-visible log/notification" should fire, since it means a
-trustee's share is effectively stranded until someone re-wraps and
+trustee's shard is effectively stranded until someone re-wraps and
 re-deposits. These are not the same problem wearing two hats — they
 have different recipients, different urgency, and arguably different
 channels:
@@ -34,7 +34,7 @@ channels:
 | Recipient | The trustee | Whoever operates the vault/drop point |
 | Fires on | Successful `deposit()` | TTL expiry with `redeemed = False` |
 | Urgency | Low-to-medium — trustee should act within the TTL window | Can be a log line, or an active alert if the operator wants SLA-backed follow-up |
-| Consequence of missing it | Trustee never pulls, drop expires, share is stranded | Nobody notices the stranded share until recovery is actually attempted |
+| Consequence of missing it | Trustee never pulls, drop expires, shard is stranded | Nobody notices the stranded shard until recovery is actually attempted |
 
 Both need designing. This paper covers both, but they don't have to
 share one implementation.
@@ -118,7 +118,7 @@ operational alerting, not a new problem shardic invents:
 - **Log line only.** Matches the project's overall bias toward
   simplicity, but only useful if someone's actually watching logs.
 - **Active alert** (webhook into existing on-call/paging tooling).
-  Appropriate if a stranded share is treated as an operational
+  Appropriate if a stranded shard is treated as an operational
   incident rather than a background fact.
 
 ## Design-choice drivers

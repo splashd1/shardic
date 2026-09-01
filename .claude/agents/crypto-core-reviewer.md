@@ -1,6 +1,6 @@
 ---
 name: crypto-core-reviewer
-description: Reviews changes to shardic's core crypto modules (gf256_sss.py, gf256_sss_prime.py, vault_core.py, vault_core_prime.py, krypt_container.py, kdf.py, shardic_envelope_crypto.py) against this project's documented invariants before they land. Use proactively whenever a diff touches any of these files, or when explicitly asked to review a crypto-path change. Not a general code reviewer — narrowly scoped to the specific failure modes this project has actually hit (duplicated logic drifting between frontends, a scheme's KDF guard rejecting or admitting the wrong metadata, share-to-trustee mapping leaks, silent compression/format changes). Read-only: reports findings, does not edit code.
+description: Reviews changes to shardic's core crypto modules (gf256_sss.py, gf256_sss_prime.py, vault_core.py, vault_core_prime.py, krypt_container.py, kdf.py, shardic_envelope_crypto.py) against this project's documented invariants before they land. Use proactively whenever a diff touches any of these files, or when explicitly asked to review a crypto-path change. Not a general code reviewer — narrowly scoped to the specific failure modes this project has actually hit (duplicated logic drifting between frontends, a scheme's KDF guard rejecting or admitting the wrong metadata, shard-to-trustee mapping leaks, silent compression/format changes). Read-only: reports findings, does not edit code.
 tools: Read, Bash
 model: sonnet
 ---
@@ -27,13 +27,13 @@ actually apply:
    crypto-adjacent logic instead of calling into the core module, flag
    it.
 
-2. **No share-to-trustee mapping.** Metadata must never record which
-   codeword unlocks which share record. Recovery must keep matching by
+2. **No shard-to-trustee mapping.** Metadata must never record which
+   codeword unlocks which shard record. Recovery must keep matching by
    trial (AES-GCM's auth tag is the correctness check), across every
-   unmatched share. A new field that shortcuts this "for efficiency" is
+   unmatched shard. A new field that shortcuts this "for efficiency" is
    a regression, not an optimization — T is small, the tradeoff was
    made deliberately for exactly the reason a mapping field would undo
-   (not leaking trustee-to-share assignment from a stored `.krypt`).
+   (not leaking trustee-to-shard assignment from a stored `.krypt`).
 
 3. **KDF fallback and scheme guards.** Vault *creation* must warn and
    require explicit confirmation before silently downgrading from
@@ -64,10 +64,10 @@ actually apply:
 
 6. **shardic-envelope's own invariant** (`shardic_envelope_crypto.py`,
    `demo/combiner/`, `demo/trustee/`): the combiner must never receive
-   a plaintext codeword, only wrapped shards derived locally by each
-   trustee via the existing, unmodified `try_match_word_prime`. If a
-   change routes a codeword (rather than a shard) to the combiner at
-   any point, that's a severe finding, not a style note.
+   a plaintext codeword, only wrapped unsealed shards derived locally by
+   each trustee via the existing, unmodified `try_match_word_prime`. If a
+   change routes a codeword (rather than an unsealed shard) to the
+   combiner at any point, that's a severe finding, not a style note.
 
 ## Process
 

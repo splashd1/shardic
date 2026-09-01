@@ -2,7 +2,7 @@
 
 **Status: design proposal.** Nothing described here exists in the
 codebase yet. This is the variant
-[shardware-token.md](shardware-token.md#shardware-token-part-1-physical-carriage-of-a-shard-proposed-unimplemented)
+[shardware-token.md](shardware-token.md#shardware-token-part-1-physical-carriage-of-an-unsealed-shard-proposed-unimplemented)
 originally reserved as "future doc," and the opt-in hardening option
 [portable-trustee-client.md](portable-trustee-client.md#browser-xss-residual-risk-resolved-web-is-the-default-documented-risk-with-an-opt-in-alternative)
 already flagged without designing. Of the three shardware-token
@@ -23,8 +23,8 @@ Contrast against the other two variants already designed:
 
 | Variant | What the hardware does |
 |---|---|
-| Physical carriage (part 1) | Is the *transport* for an already-wrapped shard; the token can be dumb storage |
-| PUF-sealed embed/extract (part 3) | *Seals and vault-signed-releases* a shard already matched, gated by an extraction grant |
+| Physical carriage (part 1) | Is the *transport* for an already-wrapped unsealed shard; the token can be dumb storage |
+| PUF-sealed embed/extract (part 3) | *Seals and vault-signed-releases* an unsealed shard already matched, gated by an extraction grant |
 | Hardware-backed key custody (this doc, part 2) | Holds the trustee's own long-lived envelope keypair and performs the *ECDH step* of `wrap()`/`unwrap()`; delivery stays fully networked, exactly as `docs/pubkey-envelope-plugin.md` and `docs/envelope-delivery.md` already specify |
 
 Registration still populates the same local key registry
@@ -147,9 +147,10 @@ optional.
 Everything downstream of the shared secret is byte-for-byte identical
 to the existing walkthrough: the trustee still ends up with a plaintext
 codeword (or, in the shardic-envelope/shardic-prime path, still derives
-and submits a shard exactly as `submit_shard_reply()` already expects).
-The hardware only ever touches the ECDH half of one `unwrap()` call --
-it never sees a codeword, a shard, or the combiner's session state.
+and submits an unsealed shard exactly as `submit_unsealed_shard_reply()`
+already expects). The hardware only ever touches the ECDH half of one
+`unwrap()` call -- it never sees a codeword, an unsealed shard, or the
+combiner's session state.
 
 ## CLI vs. browser: a real asymmetry, not an oversight
 

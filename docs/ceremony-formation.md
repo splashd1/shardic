@@ -22,7 +22,7 @@ original design and settled during implementation — each is marked
 > **Note on terminology:** this doc deliberately says "candidate
 > directory," never "pool," for the org-wide set of registered
 > trustees. `nomenclature.md` already reserves "pool trustee" / "pool
-> share" for a distinct, unrelated shardic-prime concept (the
+> shard" for a distinct, unrelated shardic-prime concept (the
 > non-prime `D − 1` group within one vault's threshold) — reusing
 > "pool" here for a different thing would create exactly the kind of
 > collision that glossary exists to prevent.
@@ -113,7 +113,7 @@ invitation carries:
   invitation to actually name one.
 - A TTL (`CEREMONY_INVITE_TTL_S`, below).
 - A fresh liveness/proof-of-possession check — satisfied by the same
-  mechanism already used for registration and shard replies: every
+  mechanism already used for registration and unsealed shard replies: every
   call requires a currently-valid OIDC Bearer token, freshly fetched
   each poll rather than a cached/refresh-token flow. No separate PoP
   mechanism was needed.
@@ -124,7 +124,7 @@ This resolves the discovery half of the open question
 register their long-lived pubkey with" (self-service, once, against
 the org's known enrollment endpoint — a **pull** model). Ceremony
 *participation* is a separate, later question — "where do I send my
-shard for this particular ceremony" — and that's what the invitation
+unsealed shard for this particular ceremony" — and that's what the invitation
 answers, issued by the operator/combiner at ceremony-initiation time (a
 **push** model). Conflating these two was the source of the original
 open question; keeping them as two distinct events, each with its own

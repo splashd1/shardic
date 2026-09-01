@@ -9,13 +9,13 @@
 ## Core tension (constrains everything below)
 
 Shardic's core value prop depends on **minimal, local, non-leaking**
-metadata — no share-to-trustee mapping stored anywhere, trial-decryption
+metadata — no shard-to-trustee mapping stored anywhere, trial-decryption
 instead of an index (`vault_core.py` / the zero-leakage indexing
 principle). A DLT is the opposite instinct: persistent, replicated,
 often-public record-keeping. The question is not "put shardic on a
 ledger" — it's **which specific event layer** benefits from an
 immutable multi-party record, without pulling cryptographic material
-(shares, codewords, `unlock_value`) into that record. Any future design
+(shards, codewords, `unlock_value`) into that record. Any future design
 in this space should be evaluated against that split first.
 
 ## Candidate fits (roughly least → most radical)
@@ -38,7 +38,7 @@ in this space should be evaluated against that split first.
 
 3. **Threshold recovery as a smart-contract alternative to the Flask
    combiner.** More radical: a smart contract enforces "D of T
-   signatures required" as consensus logic, while actual GF(256) share
+   signatures required" as consensus logic, while actual GF(256) shard
    combination stays off-chain/client-side. Trades "trust the combiner
    operator" for "trust the contract + chain consensus" — a genuine
    architectural alternative worth naming as a comparison point even if
@@ -68,7 +68,7 @@ neither a bare SSS tool nor a traditional HSM cleanly offers.
 
 Do **not** let this pull GF(256) SSS itself onto a chain — the math
 doesn't need consensus, only the ceremony/authorization events around
-it do. If a future design pass starts implying on-chain share storage
+it do. If a future design pass starts implying on-chain shard storage
 or on-chain codeword/`unlock_value` handling, that's a violation of the
 zero-leakage principle, not a feature — treat it as a red flag, not a
 design choice to weigh.

@@ -74,7 +74,7 @@ means:
   have some trustees who memorize a normal-sized codeword and others
   who get the long/wrapped kind, mixed freely, since `vault_recover.py`
   doesn't care how a trustee arrived at the string they type in — it
-  just tries it against the share records.
+  just tries it against the shard records.
 - shardic-prime's prime-trustee codeword and pool codewords are both
   just files in `<random16>_trustee_words/` too, so the plugin needs no
   awareness of which scheme produced its input.
@@ -140,7 +140,7 @@ type:
 Both land in the same envelope shape: `{algorithm, ephemeral_key_or_wrapped_dek,
 nonce, ciphertext}` — deliberately mirroring the
 `{salt, nonce, ciphertext}` shape `vault_core.py` already uses for
-share records, so the plugin's output format doesn't invent a
+shard records, so the plugin's output format doesn't invent a
 gratuitously different convention. Serialize it the same
 length-prefixed-JSON-then-bytes way `krypt_container.py` frames the
 `.krypt` file, or reuse that module directly if the shape ends up
@@ -208,7 +208,7 @@ trustee holding a `.envelope` file:
    other trustee would today.
 
 shardic's recovery path is unaware any of this happened — it just
-matches a string against share records as it always has. This is
+matches a string against shard records as it always has. This is
 important: **the vault operator running `vault_recover.py` never sees
 a trustee's private key, and ideally never sees their plaintext
 codeword either** (the trustee decrypts locally and types the result
@@ -221,14 +221,14 @@ relative to the memorized-codeword model, not just restatements of
 existing ones:
 
 - **A trustee's private key becomes a single point of failure for
-  their share.** Lose the private key (no backup) and that trustee's
+  their shard.** Lose the private key (no backup) and that trustee's
   codeword is gone as surely as if they'd forgotten a memorized one —
   except there's no "try to recall it" fallback. Whoever deploys this
   needs their own private-key backup story (hardware key duplication,
   Shamir-split the private key itself, whatever); that's out of scope
   for shardic to prescribe.
 - **The base scheme's information-theoretic guarantee about
-  individual shares is unaffected.** A compromised trustee private key
+  individual shards is unaffected.** A compromised trustee private key
   exposes exactly that one trustee's codeword — same blast radius as
   that trustee writing their memorized codeword on a sticky note and
   losing it. Below the threshold `D`, this is still just one point

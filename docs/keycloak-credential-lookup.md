@@ -304,7 +304,7 @@ separately is what unblocked it:
    **push / invitation-driven**: at ceremony-initiation time, an
    operator issues an ephemeral, per-trustee invitation that names
    which combiner/vault-holder instance is running *this specific
-   ceremony* and where to send a shard. The invitation doubles as
+   ceremony* and where to send an unsealed shard. The invitation doubles as
    discovery (which instance) and a fresh liveness/proof-of-possession
    check, without requiring a second registration event or a fresh
    keypair. See [ceremony-formation.md](ceremony-formation.md) for the

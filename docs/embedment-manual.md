@@ -15,7 +15,7 @@ become a second copy that drifts from them over time.
 
 **What shardic is.** A threshold-recoverable protection scheme: a
 secret is split via Shamir's Secret Sharing (GF(256), byte-wise) into
-T shares under a threshold D, such that any D of T parties agreeing —
+T shards under a threshold D, such that any D of T parties agreeing —
 never fewer, never any single party alone — can recover it. Three
 layers, each built on the one before, and this manual's decisions live
 almost entirely in the third:
@@ -28,14 +28,14 @@ almost entirely in the third:
    top of the base scheme; that mask/pool split is the same primitive
    `spac-concept.md`'s Fielded Prime Element reuses unmodified.
 2. **shardic-envelope** — the networked ceremony layer:
-   pubkey-wrapped codewords/shards (`pubkey-envelope-plugin.md`), a
+   pubkey-wrapped codewords/unsealed shards (`pubkey-envelope-plugin.md`), a
    Keycloak-backed trustee directory and `shardic-operator` role
    (`keycloak-credential-lookup.md`), and operator-run ceremony
    formation with invitations/backfill (`ceremony-formation.md`,
    implemented). Introduces the **combiner** (holds ciphertext +
    wrapped envelopes, never sees a plaintext codeword) and the
-   **trustee client** (registers a keypair, derives and submits a
-   shard).
+   **trustee client** (registers a keypair, derives and submits an
+   unsealed shard).
 3. **SPAC (this manual's actual subject)** — `spac-concept.md`'s
    reframe: the thing shardic protects doesn't have to be a file, it
    can be the enabling value for *any* protected action (financial
@@ -50,7 +50,7 @@ almost entirely in the third:
 | Crypto core (`gf256_sss*.py`, `vault_core*.py`, `krypt_container.py`, `kdf.py`, `shardic_envelope_crypto.py`) | The actual split/wrap/reconstruct math. Pure Python, no network dependency. | Implemented |
 | Combiner | Holds `.krypt` + wrapped envelopes, runs ceremony formation, never sees a codeword | Implemented (`demo/combiner/`) |
 | Trustee directory + operator role | Keycloak-backed candidate list, `shardic-operator` realm role, separation-of-duties enforcement | Implemented |
-| Trustee client | Registers keypair, derives/submits a shard during recovery | Implemented as a container today; browser/portable and hardware-backed variants are design proposals (`portable-trustee-client.md`, `shardware-token-key-custody.md`) |
+| Trustee client | Registers keypair, derives/submits an unsealed shard during recovery | Implemented as a container today; browser/portable and hardware-backed variants are design proposals (`portable-trustee-client.md`, `shardware-token-key-custody.md`) |
 | **Shardic client module** | The integration point *inside the consuming system* — see below | Design proposal, not yet built for any real integration |
 
 **The embedment boundary: shardic client module + ICD.** This is the
@@ -85,7 +85,7 @@ chain?), which is the prerequisite for writing that ICD for real.
 │                     (mask, sealed, never      │
 │                      leaves this boundary)    │
 └──────────────────────┬────────────────────────┘
-                        │  pool shares (Fork 2: network / physical / hybrid)
+                        │  pool unsealed shards (Fork 2: network / physical / hybrid)
                         ▼
         [Trustees] ──▶ [Combiner / directory]  (shardic-envelope,
                                                   implemented)
@@ -103,8 +103,8 @@ actual wire format is still undesigned, per above.
 | Client module → Fielded Prime Element | `extraction_grant` | `token_pubkey_hash`, `nonce`, `issued_at`, `ttl`, `intermediate_cert_ref`, Approver-chain signature — the two-tier authorization proving this arming was actually approved |
 | Client module → Fielded Prime Element | `local_unlock_assertion` | Result of the `LocalUnlockFactor` check (possessed/known/inherent) — gates whether the mask releases at all, independent of the grant |
 | Fielded Prime Element → client module | `mask` | Released only if both the grant and the local-unlock assertion check out; never leaves the boundary otherwise |
-| Combiner → client module | `pool_shares[]` | Threshold-D trustee shard envelopes, arriving via whichever Fork 2 transport this deployment picked (network/physical/hybrid) |
-| Client module (internal) | `masked_secret` | Reconstructed from `pool_shares[]` via `reconstruct_secret_with_prime()` — never crosses a wire, computed in-process |
+| Combiner → client module | `pool_shards[]` | Threshold-D trustee unsealed shard envelopes, arriving via whichever Fork 2 transport this deployment picked (network/physical/hybrid) |
+| Client module (internal) | `masked_secret` | Reconstructed from `pool_shards[]` via `reconstruct_secret_with_prime()` — never crosses a wire, computed in-process |
 | Client module → consuming system's critical-path point | `DEK` / unlock signal | `masked_secret XOR mask`; what the ICD ultimately hands back to satisfy the protected action |
 | Client module → audit sink | `commitment_check_result` | Fast per-arming wrapped-MAC check against the Approver's swap-integrity commitment (the slow KDF+signature check is a periodic audit, off this critical path per `spac-concept.md`) |
 
@@ -163,11 +163,11 @@ Fork 1 — Does the protected action have to be bound to one specific
             whichever LocalUnlockFactor the custodian supplies.
         → second sub-fork (fleet scale only — moot for a single unit):
           COHORT GRANULARITY. Concretely: `reconstruct_secret_with_prime(
-          mask, pool_shares)` recovers `masked_secret`, then XORs the
+          mask, pool_shards)` recovers `masked_secret`, then XORs the
           unit's own `mask` to get that unit's real DEK. Because that
           XOR happens *inside each unit against its own non-extractable
           mask*, DEK uniqueness per unit holds regardless of this
-          choice — what varies is whether `masked_secret`/`pool_shares`
+          choice — what varies is whether `masked_secret`/`pool_shards`
           (the trustees' side of the equation) is a value shared across
           several units, or generated fresh for one.
 
@@ -211,14 +211,14 @@ Fork 1 — Does the protected action have to be bound to one specific
           as that driver actually requires (e.g. cohorts sized to a
           logistics batch or a facility, not the whole fleet by
           default), especially for PAL-style/arming CONOPS. Fleet-wide
-          common shares remain available as a real, nameable trade when
+          common shards remain available as a real, nameable trade when
           fleet-wide RTO-at-scale genuinely outweighs compartmentalization
           (e.g. a large, lower-stakes asset or sensor fleet) — it's one
           point on the spectrum, not a separate option from it.
 
-Fork 2 — Trustee share DELIVERY transport (independent of Fork 1 —
+Fork 2 — Trustee unsealed shard DELIVERY transport (independent of Fork 1 —
           a Fielded Prime Element's mask is local *by definition*;
-          this fork is about how the *pool* shares reach it/the
+          this fork is about how the *pool* unsealed shards reach it/the
           combiner)
   Network        — shardic-envelope over HTTP, ceremony-formation
                     as already implemented. Default, lowest friction.
@@ -234,7 +234,7 @@ Fork 2 — Trustee share DELIVERY transport (independent of Fork 1 —
                     not a per-ceremony one."
 
 Fork 3 — Trustee KEY CUSTODY (independent of Fork 2 — applies whether
-          the resulting shard then travels by network or token)
+          the resulting unsealed shard then travels by network or token)
   Software  — private key in container/device (current default).
   Hardware  — shardware-token part 2. On-device-ECDH tier (YubiKey
               OpenPGP, TPM, PIV/PKCS#11) vs. gated-software-key tier
@@ -318,8 +318,8 @@ resistance.
 
 These are two ends of a spectrum, not the only two valid
 configurations — a deployment can, for instance, want Fielded Prime
-Element binding (Bundle B's Fork 1) while keeping pool-share delivery
-fully networked (Bundle A's Fork 2), which is exactly the shape the
+Element binding (Bundle B's Fork 1) while keeping pool unsealed-shard
+delivery fully networked (Bundle A's Fork 2), which is exactly the shape the
 white paper's own treasury-disbursement vignette already uses.
 
 ## Per-axis reference table (for deviating from a bundle)
@@ -334,12 +334,12 @@ white paper's own treasury-disbursement vignette already uses.
 | 6 | `LocalUnlockFactor` category | 1 (fielded custodian) or 2 (token) | Does the holder role rotate? | n/a | Possessed (key-switch / smartcard) | Known (PIN) if accountable-logging infra exists and cost matters most; Inherent (biometric) only for a fixed, non-rotating named individual |
 | 7 | `intermediate_cert`/`extraction_grant` encoding | 1 (grant-chain sub-fork) | Token firmware capability | n/a | CWT (COSE/RFC 8392) | Firmware can't fit CBOR/COSE → bespoke fixed binary |
 | 8 | Grant-authorization audit logging | 1 (grant-chain sub-fork) | Compliance requirement | n/a | Extend existing `_broadcast()`/`print()` SSE pattern | Tamper-evident/offline non-repudiable audit required → export to external syslog/SIEM |
-| 9 | Post-extraction shard delivery | 1 (grant-chain sub-fork) | Is the combiner reachable at all? | n/a | Network | Full end-to-end air-gap deliberately wanted → second physical hop |
+| 9 | Post-extraction unsealed shard delivery | 1 (grant-chain sub-fork) | Is the combiner reachable at all? | n/a | Network | Full end-to-end air-gap deliberately wanted → second physical hop |
 | 10 | Hardware custody target | 3 | CLI vs. browser trustee; existing org hardware | YubiKey OpenPGP (opt-in) | YubiKey OpenPGP (default) | Org already issues PIV → PIV/PKCS#11 (needs #13 first); fixed managed machine → TPM; browser-only trustee → FIDO2 `hmac-secret` (document as the weaker gated-software-key tier) |
 | 11 | Attestation-root governance | 3 | — | n/a | Not a tech choice — assign to whoever already governs "who's a legitimate trustee/vendor" org-wide; charter jointly with the Approver-root question `spac-concept.md` flags | |
 | 12 | Re-attestation cadence | 3 | Threat-model tier | n/a | Once, at registration | Hardware-swap is in the threat model → periodic, tied to `intermediate_cert`'s own rotation cadence |
 | 13 | Second envelope-algorithm variant (NIST-curve smartcards) | 3 | — | **Not yet a menu option anywhere.** No design exists. PIV/PKCS#11 isn't actually available until this is designed — flag as a prerequisite, not a pluggable choice, in both bundles. | | |
-| 14 | Cohort granularity for trustee shares across a fielded fleet | 1 (fleet-scale sub-fork) | RTO-at-scale/provisioning-efficiency need vs. compartmentalization requirement | n/a | Cohort size 1 / fully discrete (default) | Fleet-wide or grouped simultaneous/rapid unlock genuinely outweighs compartmentalization loss for that grouping (e.g. large, lower-stakes asset/sensor fleet, or a logistics-batch-sized cohort) → larger cohort, sized to the driver, chosen deliberately, not by default |
+| 14 | Cohort granularity for trustee shards across a fielded fleet | 1 (fleet-scale sub-fork) | RTO-at-scale/provisioning-efficiency need vs. compartmentalization requirement | n/a | Cohort size 1 / fully discrete (default) | Fleet-wide or grouped simultaneous/rapid unlock genuinely outweighs compartmentalization loss for that grouping (e.g. large, lower-stakes asset/sensor fleet, or a logistics-batch-sized cohort) → larger cohort, sized to the driver, chosen deliberately, not by default |
 
 ## Settled
 
