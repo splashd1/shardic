@@ -9,9 +9,9 @@ archive. See vault_core_prime.py for the construction.
 
 Codewords can be entered in any order -- this program doesn't need to
 be told in advance which one is the prime trustee's. Each codeword is
-tried against every unmatched share record the same way
+tried against every unmatched shard record the same way
 vault_recover.py does it; the type-tagged payload says whether it
-turned out to be the prime share or a pool share only once it
+turned out to be the prime shard or a pool shard only once it
 successfully decrypts.
 
 Usage:
@@ -104,22 +104,22 @@ def main():
 
     threshold = metadata["threshold"]
     pool_threshold = metadata["pool_threshold"]
-    share_records = metadata["shares"]
+    shard_records = metadata.get("shards", metadata.get("shares"))
 
     print(
         f"[i] This vault requires the prime trustee's codeword plus "
         f"{pool_threshold} of {metadata['pool_size']} pool codewords "
         f"({threshold} total, of {metadata['trustees_total']} trustees)."
     )
-    print(f"[i] Share protection KDF: {kdf_method}")
+    print(f"[i] Shard protection KDF: {kdf_method}")
 
     mask = None
-    pool_shares = []
+    pool_shards = []
     used_indices = set()
 
     codewords_queue = list(args.word)
-    while mask is None or len(pool_shares) < pool_threshold:
-        total_have = (1 if mask is not None else 0) + len(pool_shares)
+    while mask is None or len(pool_shards) < pool_threshold:
+        total_have = (1 if mask is not None else 0) + len(pool_shards)
         if codewords_queue:
             word = codewords_queue.pop(0)
         else:
@@ -130,9 +130,9 @@ def main():
                 print("  (empty input, try again)")
                 continue
 
-        match = vault_core_prime.try_match_word_prime(word, share_records, kdf_method, kdf_params, used_indices)
+        match = vault_core_prime.try_match_word_prime(word, shard_records, kdf_method, kdf_params, used_indices)
         if match is None:
-            print("  [-] That codeword doesn't match any remaining share. Try again.")
+            print("  [-] That codeword doesn't match any remaining shard. Try again.")
             continue
 
         idx, kind, value = match
@@ -141,12 +141,12 @@ def main():
             mask = value
             print("  [+] Prime trustee's codeword accepted.")
         else:
-            pool_shares.append(value)
-            print(f"  [+] Pool codeword accepted ({len(pool_shares)}/{pool_threshold}).")
+            pool_shards.append(value)
+            print(f"  [+] Pool codeword accepted ({len(pool_shards)}/{pool_threshold}).")
 
     try:
         vault_core_prime.reconstruct_and_decrypt_prime(
-            metadata, ciphertext, mask, pool_shares, outdir=args.outdir,
+            metadata, ciphertext, mask, pool_shards, outdir=args.outdir,
             log=lambda msg: print(f"[*] {msg}"),
         )
     except vault_core_prime.VaultError as e:

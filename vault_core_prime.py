@@ -18,12 +18,12 @@ uniform scheme stays untouched.
 total participants = 1 prime + (T-1) pool trustees; D codewords
 required to recover = the prime's + (D-1) from the pool.
 
-Share records keep the same opaque {salt, nonce, ciphertext} shape as
+Shard records keep the same opaque {salt, nonce, ciphertext} shape as
 the base scheme, and are shuffled together the same way -- so which
 record belongs to the prime trustee is not visible from the container
 structure either, only from decrypting it with the right codeword.
-The encrypted payload carries a one-byte type tag (SHARE_TYPE_PRIME /
-SHARE_TYPE_POOL) so a codeword's role is only learned once it matches.
+The encrypted payload carries a one-byte type tag (SHARD_TYPE_PRIME /
+SHARD_TYPE_POOL) so a codeword's role is only learned once it matches.
 """
 
 import base64
@@ -48,13 +48,13 @@ NONCE_LEN = base.NONCE_LEN
 
 VaultError = base.VaultError
 
-SHARE_TYPE_PRIME = 0
-SHARE_TYPE_POOL = 1
+SHARD_TYPE_PRIME = 0
+SHARD_TYPE_POOL = 1
 
-# Share-protection mode, per whitepaper §4.8: "kdf" is the traditional
+# Shard-protection mode, per whitepaper §4.8: "kdf" is the traditional
 # human-memorized codeword stretched through kdf.derive_key(); "drbg" is
 # a full-strength key drawn directly from the OS CSPRNG, used as the
-# share-protection key with no wordlist and no KDF stretching -- because
+# shard-protection key with no wordlist and no KDF stretching -- because
 # neither serves any purpose against a value that's already uniformly
 # random across the full key space. A "drbg" credential can't be
 # memorized, so callers that choose it must deliver the raw key bytes
@@ -92,7 +92,7 @@ def create_vault_prime(
     `protection_modes`, if given, is a list of length `trustees` (index
     0 = prime, 1..pool_size = pool trustees in split order) of
     PROTECTION_KDF/PROTECTION_DRBG, choosing per-trustee how that
-    trustee's share is protected (see the PROTECTION_* constants).
+    trustee's shard is protected (see the PROTECTION_* constants).
     Omitting it (the default) protects every trustee with PROTECTION_KDF,
     identical to this function's behavior before this parameter existed
     -- existing callers (the CLI, the GUI) are unaffected.
@@ -201,34 +201,34 @@ def create_vault_prime(
     archive_nonce = secrets.token_bytes(NONCE_LEN)
     ciphertext = AESGCM(dek).encrypt(archive_nonce, plaintext, associated_data=None)
 
-    mask, pool_shares = split_secret_with_prime(dek, pool_threshold=pool_threshold, pool_size=pool_size)
+    mask, pool_shards = split_secret_with_prime(dek, pool_threshold=pool_threshold, pool_size=pool_size)
     log(
-        f"Split DEK into 1 prime share + {pool_size} pool shares, pool "
+        f"Split DEK into 1 prime shard + {pool_size} pool shards, pool "
         f"threshold {pool_threshold} (total required to recover: {threshold})"
     )
 
     def _seal_kdf(codeword: str, payload: bytes) -> dict:
         salt = secrets.token_bytes(SALT_LEN)
-        share_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
-        share_nonce = secrets.token_bytes(NONCE_LEN)
-        share_ct = AESGCM(share_key).encrypt(share_nonce, payload, associated_data=None)
+        shard_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
+        shard_nonce = secrets.token_bytes(NONCE_LEN)
+        shard_ct = AESGCM(shard_key).encrypt(shard_nonce, payload, associated_data=None)
         return {
             "protection": PROTECTION_KDF,
             "salt": base64.b64encode(salt).decode(),
-            "nonce": base64.b64encode(share_nonce).decode(),
-            "ciphertext": base64.b64encode(share_ct).decode(),
+            "nonce": base64.b64encode(shard_nonce).decode(),
+            "ciphertext": base64.b64encode(shard_ct).decode(),
         }
 
     def _seal_drbg(payload: bytes) -> tuple[dict, bytes]:
-        share_key = secrets.token_bytes(32)
-        share_nonce = secrets.token_bytes(NONCE_LEN)
-        share_ct = AESGCM(share_key).encrypt(share_nonce, payload, associated_data=None)
+        shard_key = secrets.token_bytes(32)
+        shard_nonce = secrets.token_bytes(NONCE_LEN)
+        shard_ct = AESGCM(shard_key).encrypt(shard_nonce, payload, associated_data=None)
         record = {
             "protection": PROTECTION_DRBG,
-            "nonce": base64.b64encode(share_nonce).decode(),
-            "ciphertext": base64.b64encode(share_ct).decode(),
+            "nonce": base64.b64encode(shard_nonce).decode(),
+            "ciphertext": base64.b64encode(shard_ct).decode(),
         }
-        return record, share_key
+        return record, shard_key
 
     def _issue(trustee_index: int, file_stem: str, payload: bytes) -> dict:
         """Seals `payload` under whichever protection mode this trustee_index
@@ -238,29 +238,29 @@ def create_vault_prime(
                 word_length, word_count, dictionary_words,
                 randomize_case=randomize_case, digit_suffix_len=digit_suffix_len,
             )
-            share_records.append(_seal_kdf(codeword, payload))
+            shard_records.append(_seal_kdf(codeword, payload))
             file_path = os.path.join(words_dir, f"{file_stem}.txt")
             with open(file_path, "w") as f:
                 f.write(codeword + "\n")
             trustee_files.append(file_path)
             return {"mode": PROTECTION_KDF, "codeword": codeword, "file": file_path}
         record, raw_key = _seal_drbg(payload)
-        share_records.append(record)
+        shard_records.append(record)
         return {"mode": PROTECTION_DRBG, "key": raw_key}
 
-    share_records = []
+    shard_records = []
     trustee_files = []
     credentials = []
 
-    prime_cred = _issue(0, "trustee_prime", bytes([SHARE_TYPE_PRIME]) + mask)
+    prime_cred = _issue(0, "trustee_prime", bytes([SHARD_TYPE_PRIME]) + mask)
     credentials.append(prime_cred)
     prime_file = prime_cred.get("file")
 
-    for i, (x, y) in enumerate(pool_shares, start=1):
-        pool_cred = _issue(i, f"trustee_{i}", bytes([SHARE_TYPE_POOL, x]) + y)
+    for i, (x, y) in enumerate(pool_shards, start=1):
+        pool_cred = _issue(i, f"trustee_{i}", bytes([SHARD_TYPE_POOL, x]) + y)
         credentials.append(pool_cred)
 
-    secrets.SystemRandom().shuffle(share_records)
+    secrets.SystemRandom().shuffle(shard_records)
 
     metadata = {
         "version": 1,
@@ -280,7 +280,7 @@ def create_vault_prime(
         "kdf_params": kdf_params,
         "salt_len": SALT_LEN,
         "nonce_len": NONCE_LEN,
-        "shares": share_records,
+        "shards": shard_records,
     }
     krypt_path = os.path.join(outdir, krypt_filename)
     krypt_container.write_krypt(krypt_path, metadata, ciphertext)
@@ -323,7 +323,7 @@ def resolve_kdf(metadata: dict) -> tuple[str, dict]:
     return base._resolve_kdf_common(metadata)
 
 
-def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, used_indices):
+def try_match_word_prime(codeword: str, shard_records, kdf_method, kdf_params, used_indices):
     """Like vault_core.try_match_word, but decodes the type-tagged
     payload used by the prime-trustee scheme. Only tries PROTECTION_KDF
     records -- a PROTECTION_DRBG record has no salt to derive against
@@ -333,7 +333,7 @@ def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, u
     value is the mask bytes, or kind is "pool" and value is
     (x, y_bytes). Returns None if no untried record matches.
     """
-    for idx, rec in enumerate(share_records):
+    for idx, rec in enumerate(shard_records):
         if idx in used_indices:
             continue
         if rec.get("protection", PROTECTION_KDF) != PROTECTION_KDF:
@@ -347,18 +347,18 @@ def try_match_word_prime(codeword: str, share_records, kdf_method, kdf_params, u
         except InvalidTag:
             continue
 
-        share_type = payload[0]
-        if share_type == SHARE_TYPE_PRIME:
+        shard_type = payload[0]
+        if shard_type == SHARD_TYPE_PRIME:
             return idx, "prime", payload[1:]
-        if share_type == SHARE_TYPE_POOL:
+        if shard_type == SHARD_TYPE_POOL:
             return idx, "pool", (payload[1], payload[2:])
         continue
     return None
 
 
-def try_match_key_prime(key: bytes, share_records, used_indices):
+def try_match_key_prime(key: bytes, shard_records, used_indices):
     """PROTECTION_DRBG counterpart to try_match_word_prime: `key` is the
-    raw share-protection key a trustee already holds (delivered via
+    raw shard-protection key a trustee already holds (delivered via
     shardic-envelope or physical carriage, never typed), tried directly
     against every not-yet-matched PROTECTION_DRBG record -- no salt, no
     KDF, since the key is already the AES-256-GCM key itself.
@@ -366,7 +366,7 @@ def try_match_key_prime(key: bytes, share_records, used_indices):
     Returns (record_index, kind, value), same shape as
     try_match_word_prime. Returns None if no untried record matches.
     """
-    for idx, rec in enumerate(share_records):
+    for idx, rec in enumerate(shard_records):
         if idx in used_indices:
             continue
         if rec.get("protection", PROTECTION_KDF) != PROTECTION_DRBG:
@@ -378,10 +378,10 @@ def try_match_key_prime(key: bytes, share_records, used_indices):
         except InvalidTag:
             continue
 
-        share_type = payload[0]
-        if share_type == SHARE_TYPE_PRIME:
+        shard_type = payload[0]
+        if shard_type == SHARD_TYPE_PRIME:
             return idx, "prime", payload[1:]
-        if share_type == SHARE_TYPE_POOL:
+        if shard_type == SHARD_TYPE_POOL:
             return idx, "pool", (payload[1], payload[2:])
         continue
     return None
@@ -389,18 +389,18 @@ def try_match_key_prime(key: bytes, share_records, used_indices):
 
 def match_codewords_prime(codewords: list[str], metadata: dict):
     """
-    Try each codeword in `codewords` against the vault's share records.
+    Try each codeword in `codewords` against the vault's shard records.
 
-    Returns (mask, pool_shares, unmatched_positions):
+    Returns (mask, pool_shards, unmatched_positions):
       mask is the prime trustee's mask bytes, or None if not found.
-      pool_shares is a list of (x, y_bytes) from matched pool trustees.
+      pool_shards is a list of (x, y_bytes) from matched pool trustees.
       unmatched_positions are indices into `codewords` that matched nothing.
     """
     kdf_method, kdf_params = resolve_kdf(metadata)
-    share_records = metadata["shares"]
+    shard_records = metadata.get("shards", metadata.get("shares"))
 
     mask = None
-    pool_shares = []
+    pool_shards = []
     used_indices: set[int] = set()
     unmatched_positions = []
 
@@ -408,7 +408,7 @@ def match_codewords_prime(codewords: list[str], metadata: dict):
         word = word.strip()
         if not word:
             continue
-        match = try_match_word_prime(word, share_records, kdf_method, kdf_params, used_indices)
+        match = try_match_word_prime(word, shard_records, kdf_method, kdf_params, used_indices)
         if match is None:
             unmatched_positions.append(pos)
             continue
@@ -417,22 +417,22 @@ def match_codewords_prime(codewords: list[str], metadata: dict):
         if kind == "prime":
             mask = value
         else:
-            pool_shares.append(value)
+            pool_shards.append(value)
 
-    return mask, pool_shares, unmatched_positions
+    return mask, pool_shards, unmatched_positions
 
 
 def reconstruct_and_decrypt_prime(
     metadata: dict,
     ciphertext: bytes,
     mask,
-    pool_shares: list,
+    pool_shards: list,
     outdir: str | None = None,
     log=_noop_log,
 ) -> dict:
     """
     Given the prime trustee's mask and >= pool_threshold recovered
-    pool (x, y) shares, reconstructs the DEK, decrypts the archive,
+    pool (x, y) shards, reconstructs the DEK, decrypts the archive,
     and extracts it to `outdir`.
 
     Returns: {"outdir": str}
@@ -444,16 +444,16 @@ def reconstruct_and_decrypt_prime(
             "this vault cannot be recovered without it, no matter how "
             "many pool codewords are supplied."
         )
-    if len(pool_shares) < pool_threshold:
+    if len(pool_shards) < pool_threshold:
         raise VaultError(
-            f"Only {len(pool_shares)} of the required {pool_threshold} pool "
-            "codewords matched a share (plus the prime trustee's)."
+            f"Only {len(pool_shards)} of the required {pool_threshold} pool "
+            "codewords matched a shard (plus the prime trustee's)."
         )
 
-    log("Reconstructing DEK from the prime mask and recovered pool shares ...")
-    dek = reconstruct_secret_with_prime(mask, pool_shares)
+    log("Reconstructing DEK from the prime mask and recovered pool shards ...")
+    dek = reconstruct_secret_with_prime(mask, pool_shards)
     if len(dek) != DEK_LEN:
-        raise VaultError("Reconstructed key has unexpected length -- shares may be inconsistent.")
+        raise VaultError("Reconstructed key has unexpected length -- shards may be inconsistent.")
 
     log("Decrypting archive ...")
     archive_nonce = base64.b64decode(metadata["archive_nonce"])
@@ -462,7 +462,7 @@ def reconstruct_and_decrypt_prime(
     except InvalidTag:
         raise VaultError(
             "Archive decryption failed authentication. This means the "
-            "recovered DEK is wrong (mismatched/insufficient shares) or "
+            "recovered DEK is wrong (mismatched/insufficient shards) or "
             "the ciphertext is corrupted/tampered. No output was written."
         )
 

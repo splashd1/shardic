@@ -6,8 +6,8 @@ Byte-wise Shamir's Secret Sharing over GF(2^8), using the same field
 approach used by classic tools like `ssss`.
 
 Each byte of the secret gets its own random polynomial of degree
-(threshold - 1); all bytes for a given share are evaluated at the same
-x-coordinate (the share index, 1..T). Reconstruction interpolates each
+(threshold - 1); all bytes for a given shard are evaluated at the same
+x-coordinate (the shard index, 1..T). Reconstruction interpolates each
 byte position independently at x=0.
 """
 
@@ -71,15 +71,15 @@ def _eval_poly(coeffs, x: int) -> int:
     return result
 
 
-def split_secret(secret: bytes, threshold: int, total_shares: int):
+def split_secret(secret: bytes, threshold: int, total_shards: int):
     """
-    Split `secret` (bytes) into total_shares shares such that any
+    Split `secret` (bytes) into total_shards shards such that any
     `threshold` of them can reconstruct it.
 
-    Returns: list of (x, y_bytes) tuples, x in 1..total_shares.
+    Returns: list of (x, y_bytes) tuples, x in 1..total_shards.
     """
-    if not (1 <= threshold <= total_shares <= 255):
-        raise ValueError("Require 1 <= threshold <= total_shares <= 255")
+    if not (1 <= threshold <= total_shards <= 255):
+        raise ValueError("Require 1 <= threshold <= total_shards <= 255")
 
     # One random polynomial per byte position of the secret.
     polys = []
@@ -87,35 +87,35 @@ def split_secret(secret: bytes, threshold: int, total_shares: int):
         coeffs = [byte_val] + [secrets.randbelow(256) for _ in range(threshold - 1)]
         polys.append(coeffs)
 
-    shares = []
-    for x in range(1, total_shares + 1):
+    shards = []
+    for x in range(1, total_shards + 1):
         y = bytes(_eval_poly(coeffs, x) for coeffs in polys)
-        shares.append((x, y))
-    return shares
+        shards.append((x, y))
+    return shards
 
 
-def reconstruct_secret(shares) -> bytes:
+def reconstruct_secret(shards) -> bytes:
     """
     Reconstruct the secret from a list of (x, y_bytes) tuples via
     Lagrange interpolation at x=0, done independently per byte position.
     """
-    xs = [s[0] for s in shares]
+    xs = [s[0] for s in shards]
     if len(set(xs)) != len(xs):
-        raise ValueError("Duplicate share x-coordinates supplied")
+        raise ValueError("Duplicate shard x-coordinates supplied")
 
-    secret_len = len(shares[0][1])
-    for _, y in shares:
+    secret_len = len(shards[0][1])
+    for _, y in shards:
         if len(y) != secret_len:
-            raise ValueError("Inconsistent share lengths")
+            raise ValueError("Inconsistent shard lengths")
 
     out = bytearray(secret_len)
     for pos in range(secret_len):
         total = 0
-        for i, (xi, yi) in enumerate(shares):
+        for i, (xi, yi) in enumerate(shards):
             yi_byte = yi[pos]
             num = 1
             den = 1
-            for j, (xj, _) in enumerate(shares):
+            for j, (xj, _) in enumerate(shards):
                 if i == j:
                     continue
                 num = gf_mul(num, xj)          # (0 - xj) == xj in GF(2^n)
@@ -128,13 +128,13 @@ def reconstruct_secret(shares) -> bytes:
 if __name__ == "__main__":
     # quick self-test
     secret = secrets.token_bytes(32)
-    shares = split_secret(secret, threshold=3, total_shares=5)
+    shards = split_secret(secret, threshold=3, total_shards=5)
     import itertools
-    for combo in itertools.combinations(shares, 3):
+    for combo in itertools.combinations(shards, 3):
         assert reconstruct_secret(list(combo)) == secret
     try:
-        combo2 = shares[:2]
-        assert reconstruct_secret(combo2) != secret or True  # 2 shares -> garbage, not equal in general
+        combo2 = shards[:2]
+        assert reconstruct_secret(combo2) != secret or True  # 2 shards -> garbage, not equal in general
     except Exception:
         pass
     print("gf256_sss self-test passed")

@@ -5,7 +5,7 @@ Flask service that: registers trustee public keys (Keycloak-authenticated),
 creates a shardic-prime demo vault and wraps each trustee's codeword to
 their registered key (destroying the plaintext once every envelope is
 written), serves each trustee's wrapped envelope during a recovery
-session, and combines the shards trustees send back into the
+session, and combines the unsealed shards trustees send back into the
 reconstructed DEK via vault_core_prime.reconstruct_and_decrypt_prime --
 completely unmodified from the rest of the project. The combiner never
 sees a plaintext codeword or a raw trustee_N.txt file survive past
@@ -141,7 +141,7 @@ def _new_state():
         "vault": None,             # {"vault_id", "metadata", "ciphertext" (bytes)}
         "vault_assignment": None,  # {"prime_sub", "pool_subs": [sub, ...]} -- fixed at creation time
         "codeword_envelopes": {},  # sub -> {"envelope": wrapped-dict, "mode": "kdf"|"drbg"}
-        "recovery_session": None,  # {"session_id", "replied": set, "mask", "pool_shares"} -- in-memory only
+        "recovery_session": None,  # {"session_id", "replied": set, "mask", "pool_shards"} -- in-memory only
         "trustee_last_seen": {},   # sub -> time.time() of last authenticated request -- in-memory only
         "trustee_status": {},      # sub -> "live" | "paused" -- in-memory only, derived by _heartbeat_loop
         "last_verify": None,       # {"match": bool} -- in-memory only, set by /admin/recovery/verify
@@ -461,7 +461,7 @@ def do_create_vault(input_path: str, outdir: str, use_codewords: bool = False) -
         trustees_t = ceremony["trustees_t"]
         threshold_d = ceremony["threshold_d"]
 
-        # Per whitepaper §4.8, a SPAC ceremony's default share-protection
+        # Per whitepaper §4.8, a SPAC ceremony's default shard-protection
         # source is a DRBG-sourced key -- no wordlist, no KDF stretching --
         # necessarily delivered via shardic-envelope since it can't be
         # memorized. Traditional codeword+KDF (identical to the base/prime
@@ -548,7 +548,7 @@ def do_create_vault(input_path: str, outdir: str, use_codewords: bool = False) -
             "pool_trustees": [STATE["trustee_pubkeys"][sub]["username"] for sub in pool_subs],
             "threshold": threshold_d,
             "pool_threshold": metadata["pool_threshold"],
-            "share_protection_mode": protection_mode,
+            "shard_protection_mode": protection_mode,
         }
 
     _broadcast("vault_created", response)
@@ -583,7 +583,7 @@ def start_recovery_session() -> str:
             "session_id": session_id,
             "replied": set(),
             "mask": None,
-            "pool_shares": [],
+            "pool_shards": [],
         }
     _broadcast("recovery_started", {"session_id": session_id})
     return session_id
@@ -606,7 +606,7 @@ def get_pending_envelope(sub: str) -> dict | None:
         }
 
 
-def submit_shard_reply(sub: str, session_id: str, shard_envelope: dict) -> None:
+def submit_unsealed_shard_reply(sub: str, session_id: str, shard_envelope: dict) -> None:
     with _lock:
         STATE["trustee_last_seen"][sub] = time.time()
         session = STATE["recovery_session"]
@@ -615,20 +615,20 @@ def submit_shard_reply(sub: str, session_id: str, shard_envelope: dict) -> None:
         if sub in session["replied"]:
             return  # idempotent no-op on a duplicate reply (poll-loop retry)
         try:
-            shard_bytes = shardic_envelope_crypto.unwrap(shard_envelope, STATE["combiner_private_key"])
-            kind, value = shardic_envelope_crypto.deserialize_shard(shard_bytes)
+            unsealed_shard_bytes = shardic_envelope_crypto.unwrap(shard_envelope, STATE["combiner_private_key"])
+            kind, value = shardic_envelope_crypto.deserialize_unsealed_shard(unsealed_shard_bytes)
         except (shardic_envelope_crypto.EnvelopeError, ValueError) as e:
-            raise CombinerError(f"could not process shard reply: {e}", status_code=400)
-        if kind == shardic_envelope_crypto.SHARD_KIND_PRIME:
+            raise CombinerError(f"could not process unsealed shard reply: {e}", status_code=400)
+        if kind == shardic_envelope_crypto.UNSEALED_SHARD_KIND_PRIME:
             session["mask"] = value
         else:
-            session["pool_shares"].append(value)
+            session["pool_shards"].append(value)
         session["replied"].add(sub)
         pool_threshold = STATE["vault"]["metadata"]["pool_threshold"]
         username = STATE["trustee_pubkeys"][sub]["username"]
         replied_count = len(session["replied"])
-        print(f"shard received from trustee (session {session_id}); {replied_count} received so far")
-    _broadcast("shard_received", {
+        print(f"unsealed shard received from trustee (session {session_id}); {replied_count} received so far")
+    _broadcast("unsealed_shard_received", {
         "username": username,
         "kind": kind,
         "replied_count": replied_count,
@@ -648,16 +648,16 @@ def finalize_recovery(outdir: str) -> dict:
                 "the prime trustee has not replied yet -- recovery cannot proceed without it",
                 status_code=409,
             )
-        if len(session["pool_shares"]) < pool_threshold:
+        if len(session["pool_shards"]) < pool_threshold:
             raise CombinerError(
-                f"only {len(session['pool_shares'])} of the required {pool_threshold} pool shards received so far",
+                f"only {len(session['pool_shards'])} of the required {pool_threshold} pool shards received so far",
                 status_code=409,
             )
         result = vault_core_prime.reconstruct_and_decrypt_prime(
             metadata=metadata,
             ciphertext=STATE["vault"]["ciphertext"],
             mask=session["mask"],
-            pool_shares=session["pool_shares"],
+            pool_shards=session["pool_shards"],
             outdir=outdir,
             log=print,
         )
@@ -890,7 +890,7 @@ def trustees_pending_envelope():
 def trustees_shard_reply():
     sub = _sub_from_bearer()
     body = request.get_json(force=True)
-    submit_shard_reply(sub, body["session_id"], body["shard_envelope"])
+    submit_unsealed_shard_reply(sub, body["session_id"], body["shard_envelope"])
     return jsonify({"status": "accepted"})
 
 
@@ -915,7 +915,7 @@ def admin_vault_create():
     body = request.get_json(silent=True) or {}
     use_codewords = bool(body.get("use_codewords", False))
     result = do_create_vault(SAMPLE_SECRET_PATH, VAULT_OUTDIR, use_codewords=use_codewords)
-    print(f"vault created by operator {operator_username} (share_protection_mode={result['share_protection_mode']})")
+    print(f"vault created by operator {operator_username} (shard_protection_mode={result['shard_protection_mode']})")
     return jsonify(result)
 
 

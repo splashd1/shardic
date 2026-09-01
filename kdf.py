@@ -1,7 +1,7 @@
 """
 kdf.py
 
-Key derivation for share protection. Two supported methods:
+Key derivation for shard protection. Two supported methods:
 
   - "pbkdf2"   : PBKDF2-HMAC-SHA256 via `cryptography` (already a
                  required dependency of this project, zero extra
@@ -66,7 +66,7 @@ def derive_key(method: str, params: dict, passphrase: str, salt: bytes) -> bytes
     if method == "argon2id":
         if not ARGON2_AVAILABLE:
             raise RuntimeError(
-                "This vault's shares are protected with Argon2id, but the "
+                "This vault's shards are protected with Argon2id, but the "
                 "'argon2-cffi' package isn't installed here. Run:\n"
                 "    pip install argon2-cffi\n"
                 "then try recovery again. (Nothing else about the vault is "

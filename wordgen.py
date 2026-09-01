@@ -2,7 +2,7 @@
 wordgen.py
 
 Generates the human-typeable codeword(s) used to protect each Shamir
-share. Three modes:
+shard. Three modes:
 
   * memorable mode (--memorable, or the default when --word-length is
     omitted): whole, real words pulled from a dictionary -- the
@@ -32,7 +32,7 @@ share. Three modes:
 
 Security note: whichever mode you use, a single short word is weak
 entropy on its own. Use --word-count > 1 to concatenate multiple
-words per share if you want a real security margin -- see the
+words per shard if you want a real security margin -- see the
 --word-count flag on vault_create.py.
 
 Opt-in strong mode (randomize_case / digit_suffix_len): the plain
@@ -52,7 +52,7 @@ lot without changing the pronounceable skeleton:
 
 Purely a generation-time choice: recovery never regenerates a
 codeword, it just tries whatever string the trustee enters against
-each share's KDF+AES-GCM check (see vault_core.try_match_word), so
+each shard's KDF+AES-GCM check (see vault_core.try_match_word), so
 enabling this mode doesn't touch the .krypt format or break
 compatibility with codewords generated before it existed.
 """

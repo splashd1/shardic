@@ -193,7 +193,7 @@
       $("formation-prime").textContent = state.vault.prime_trustee;
       $("formation-pool").textContent = state.vault.pool_trustees.join(", ");
       $("formation-split-label").textContent =
-        `prime mask + ${state.vault.pool_trustees.length} pool shares (pool threshold ${state.vault.pool_threshold})`;
+        `prime mask + ${state.vault.pool_trustees.length} pool shards (pool threshold ${state.vault.pool_threshold})`;
       $("dormant-prime").textContent = state.vault.prime_trustee;
       $("dormant-pool").textContent = state.vault.pool_trustees.join(", ");
     }
@@ -340,13 +340,13 @@
         log(`recovery session started (${data.session_id})`);
         setPhase(3);
         break;
-      case "shard_received":
+      case "unsealed_shard_received":
         spawnToken(data.username);
         if (state.recovery) {
           state.recovery.repliedUsernames.add(data.username);
           state.recovery.poolThreshold = data.pool_threshold;
         }
-        log(`shard received from ${data.username} (${data.replied_count} received so far)`);
+        log(`unsealed shard received from ${data.username} (${data.replied_count} received so far)`);
         break;
       case "recovery_finalized":
         state.finalized = data;

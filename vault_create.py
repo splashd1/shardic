@@ -4,7 +4,7 @@ vault_create.py
 
 Archives an input (file or directory), encrypts it with AES-256-GCM
 under a random Data Encryption Key (DEK), splits the DEK into T
-Shamir shares (threshold D) over GF(256), and protects each share
+Shamir shards (threshold D) over GF(256), and protects each shard
 with its own PBKDF2/Argon2id-derived key from a random codeword.
 Outputs:
 
@@ -23,7 +23,7 @@ Outputs:
                                        <vault_dir> never collide)
 
 No codeword is ever written next to information that says which
-share it unlocks -- see vault_recover.py for how matching works.
+shard it unlocks -- see vault_recover.py for how matching works.
 
 This is a thin CLI wrapper around vault_core.create_vault(); the same
 core function is used by vault_gui.py, so both frontends share one
@@ -54,8 +54,8 @@ import vault_core
 def main():
     ap = argparse.ArgumentParser(description="Create a threshold-recoverable encrypted vault.")
     ap.add_argument("--input", required=True, help="File or directory to archive & encrypt")
-    ap.add_argument("--trustees", "-T", type=int, required=True, help="Total number of shares (T)")
-    ap.add_argument("--threshold", "-D", type=int, required=True, help="Shares required to recover (D)")
+    ap.add_argument("--trustees", "-T", type=int, required=True, help="Total number of shards (T)")
+    ap.add_argument("--threshold", "-D", type=int, required=True, help="Shards required to recover (D)")
     ap.add_argument("--word-length", "-N", type=int, default=None,
                      help="Character length of each codeword. Omit for --memorable mode (the default "
                           "when this is left out): whole real words of varying length instead.")
@@ -80,7 +80,7 @@ def main():
                           "with --memorable, since case/digit noise undermines memorability.")
     ap.add_argument("--outdir", default=None, help="Output directory (default: ./vault_<timestamp>)")
     ap.add_argument("--kdf", choices=list(kdfmod.METHODS), default=None,
-                     help="KDF for share protection. Default: argon2id if argon2-cffi is installed, else pbkdf2.")
+                     help="KDF for shard protection. Default: argon2id if argon2-cffi is installed, else pbkdf2.")
     ap.add_argument("--pbkdf2-iterations", type=int, default=None, help="Override PBKDF2 iteration count")
     ap.add_argument("--argon2-time-cost", type=int, default=None, help="Override Argon2id time_cost (default 4)")
     ap.add_argument("--argon2-memory-cost-kib", type=int, default=None, help="Override Argon2id memory cost in KiB (default 262144 = 256 MiB)")
@@ -94,7 +94,7 @@ def main():
             kdf_method = "argon2id"
         else:
             print("[!] WARNING: 'argon2-cffi' is not installed, so Argon2id (the")
-            print("    stronger, memory-hard KDF) isn't available. Share protection")
+            print("    stronger, memory-hard KDF) isn't available. Shard protection")
             print("    would fall back to PBKDF2-HMAC-SHA256, which is weaker against")
             print("    GPU/ASIC-parallel offline guessing of your codewords.")
             print("    For stronger protection, install it and re-run:")
@@ -131,7 +131,7 @@ def main():
         kdf_overrides["parallelism"] = args.argon2_parallelism
     kdf_params = vault_core.resolve_kdf_params(kdf_method, kdf_overrides)
 
-    print(f"[i] Share protection KDF: {kdf_method} {kdf_params}")
+    print(f"[i] Shard protection KDF: {kdf_method} {kdf_params}")
 
     if args.memorable and args.word_length is not None:
         print(f"[i] --memorable set: ignoring --word-length {args.word_length} (using whole real words instead).")

@@ -122,7 +122,7 @@ def create_vault(
 ) -> dict:
     """
     Archives `input_path`, encrypts it, splits the DEK into `trustees`
-    Shamir shares (threshold `threshold`), protects each share with a
+    Shamir shards (threshold `threshold`), protects each shard with a
     codeword, and writes a single .krypt container plus one codeword
     file per trustee.
 
@@ -204,12 +204,12 @@ def create_vault(
     archive_nonce = secrets.token_bytes(NONCE_LEN)
     ciphertext = AESGCM(dek).encrypt(archive_nonce, plaintext, associated_data=None)
 
-    shares = split_secret(dek, threshold=threshold, total_shares=trustees)
-    log(f"Split DEK into {trustees} shares, threshold {threshold}")
+    shards = split_secret(dek, threshold=threshold, total_shards=trustees)
+    log(f"Split DEK into {trustees} shards, threshold {threshold}")
 
-    share_records = []
+    shard_records = []
     trustee_files = []
-    for i, (x, y) in enumerate(shares, start=1):
+    for i, (x, y) in enumerate(shards, start=1):
         codeword = pick_words(
             word_length,
             word_count,
@@ -218,15 +218,15 @@ def create_vault(
             digit_suffix_len=digit_suffix_len,
         )
         salt = secrets.token_bytes(SALT_LEN)
-        share_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
-        share_nonce = secrets.token_bytes(NONCE_LEN)
+        shard_key = kdfmod.derive_key(kdf_method, kdf_params, codeword, salt)
+        shard_nonce = secrets.token_bytes(NONCE_LEN)
         payload = bytes([x]) + y
-        share_ct = AESGCM(share_key).encrypt(share_nonce, payload, associated_data=None)
+        shard_ct = AESGCM(shard_key).encrypt(shard_nonce, payload, associated_data=None)
 
-        share_records.append({
+        shard_records.append({
             "salt": base64.b64encode(salt).decode(),
-            "nonce": base64.b64encode(share_nonce).decode(),
-            "ciphertext": base64.b64encode(share_ct).decode(),
+            "nonce": base64.b64encode(shard_nonce).decode(),
+            "ciphertext": base64.b64encode(shard_ct).decode(),
         })
 
         trustee_file = os.path.join(words_dir, f"trustee_{i}.txt")
@@ -234,7 +234,7 @@ def create_vault(
             f.write(codeword + "\n")
         trustee_files.append(trustee_file)
 
-    secrets.SystemRandom().shuffle(share_records)
+    secrets.SystemRandom().shuffle(shard_records)
 
     metadata = {
         "version": 2,
@@ -251,7 +251,7 @@ def create_vault(
         "kdf_params": kdf_params,
         "salt_len": SALT_LEN,
         "nonce_len": NONCE_LEN,
-        "shares": share_records,
+        "shards": shard_records,
     }
     krypt_path = os.path.join(outdir, krypt_filename)
     krypt_container.write_krypt(krypt_path, metadata, ciphertext)
@@ -295,7 +295,7 @@ def _resolve_kdf_common(metadata: dict) -> tuple[str, dict]:
 
     if kdf_method == "argon2id" and not kdfmod.ARGON2_AVAILABLE:
         raise VaultError(
-            "This vault's shares are protected with Argon2id, but "
+            "This vault's shards are protected with Argon2id, but "
             "'argon2-cffi' isn't installed here. Install it and try "
             "again -- there's no fallback for this, since the KDF "
             "choice was fixed when the vault was created."
@@ -317,10 +317,10 @@ def resolve_kdf(metadata: dict) -> tuple[str, dict]:
     return _resolve_kdf_common(metadata)
 
 
-def try_match_word(codeword: str, share_records, kdf_method, kdf_params, used_indices):
-    """Try `codeword` against every not-yet-consumed share record.
+def try_match_word(codeword: str, shard_records, kdf_method, kdf_params, used_indices):
+    """Try `codeword` against every not-yet-consumed shard record.
     Returns (record_index, x, y) on success, else None."""
-    for idx, rec in enumerate(share_records):
+    for idx, rec in enumerate(shard_records):
         if idx in used_indices:
             continue
         salt = base64.b64decode(rec["salt"])
@@ -337,13 +337,13 @@ def try_match_word(codeword: str, share_records, kdf_method, kdf_params, used_in
 
 def match_codewords(codewords: list[str], metadata: dict) -> tuple[list, list[int]]:
     """
-    Try each codeword in `codewords` against the vault's share records.
-    Returns (recovered_shares, unmatched_positions) where recovered_shares
+    Try each codeword in `codewords` against the vault's shard records.
+    Returns (recovered_shards, unmatched_positions) where recovered_shards
     is a list of (x, y_bytes) and unmatched_positions are indices into
     the input `codewords` list that didn't match anything (skips blanks).
     """
     kdf_method, kdf_params = resolve_kdf(metadata)
-    share_records = metadata["shares"]
+    shard_records = metadata.get("shards", metadata.get("shares"))
 
     recovered = []
     used_indices: set[int] = set()
@@ -353,7 +353,7 @@ def match_codewords(codewords: list[str], metadata: dict) -> tuple[list, list[in
         word = word.strip()
         if not word:
             continue
-        match = try_match_word(word, share_records, kdf_method, kdf_params, used_indices)
+        match = try_match_word(word, shard_records, kdf_method, kdf_params, used_indices)
         if match is None:
             unmatched_positions.append(pos)
             continue
@@ -367,27 +367,27 @@ def match_codewords(codewords: list[str], metadata: dict) -> tuple[list, list[in
 def reconstruct_and_decrypt(
     metadata: dict,
     ciphertext: bytes,
-    recovered_shares: list,
+    recovered_shards: list,
     outdir: str | None = None,
     log=_noop_log,
 ) -> dict:
     """
-    Given >= threshold recovered (x, y) shares, reconstructs the DEK,
+    Given >= threshold recovered (x, y) shards, reconstructs the DEK,
     decrypts the archive, and extracts it to `outdir`.
 
     Returns: {"outdir": str}
     """
     threshold = metadata["threshold"]
-    if len(recovered_shares) < threshold:
+    if len(recovered_shards) < threshold:
         raise VaultError(
-            f"Only {len(recovered_shares)} of the required {threshold} "
-            "codewords matched a share."
+            f"Only {len(recovered_shards)} of the required {threshold} "
+            "codewords matched a shard."
         )
 
-    log("Reconstructing DEK from recovered shares ...")
-    dek = reconstruct_secret(recovered_shares)
+    log("Reconstructing DEK from recovered shards ...")
+    dek = reconstruct_secret(recovered_shards)
     if len(dek) != DEK_LEN:
-        raise VaultError("Reconstructed key has unexpected length -- shares may be inconsistent.")
+        raise VaultError("Reconstructed key has unexpected length -- shards may be inconsistent.")
 
     log("Decrypting archive ...")
     archive_nonce = base64.b64decode(metadata["archive_nonce"])
@@ -396,7 +396,7 @@ def reconstruct_and_decrypt(
     except InvalidTag:
         raise VaultError(
             "Archive decryption failed authentication. This means the "
-            "recovered DEK is wrong (mismatched/insufficient shares) or "
+            "recovered DEK is wrong (mismatched/insufficient shards) or "
             "the ciphertext is corrupted/tampered. No output was written."
         )
 

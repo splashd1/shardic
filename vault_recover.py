@@ -5,13 +5,13 @@ vault_recover.py
 Given a .krypt file and >= threshold codewords, reconstructs the DEK
 via Shamir interpolation and decrypts the archive.
 
-How a codeword finds "its" share (the indexing mechanism):
-  The container's metadata stores, per share, only an opaque
+How a codeword finds "its" shard (the indexing mechanism):
+  The container's metadata stores, per shard, only an opaque
   (salt, nonce, ciphertext) tuple -- nothing says which trustee or
   word it belongs to. For each codeword entered, this program tries
-  deriving a key against every not-yet-matched share record and
+  deriving a key against every not-yet-matched shard record and
   attempts an AES-GCM decrypt. AES-GCM's authentication tag means
-  only the correct (codeword, share record) pairing succeeds; every
+  only the correct (codeword, shard record) pairing succeeds; every
   wrong pairing fails loudly and cheaply. With T typically in the
   tens, this brute trial is effectively instant, and it means the
   metadata itself reveals no assignment information even if it leaks.
@@ -26,7 +26,7 @@ Usage:
   python3 vault_recover.py --crypt-file X.crypt --metadata metadata.json [--outdir DIR]   # legacy split-file vaults
 
 If codewords aren't passed via --word (repeatable), you'll be
-prompted interactively until enough valid, distinct shares are
+prompted interactively until enough valid, distinct shards are
 recovered.
 """
 
@@ -136,10 +136,10 @@ def main():
         sys.exit(f"error: {e}")
 
     threshold = metadata["threshold"]
-    share_records = metadata["shares"]
+    shard_records = metadata.get("shards", metadata.get("shares"))
 
     print(f"[i] This vault requires {threshold} of {metadata['trustees_total']} codewords to recover.")
-    print(f"[i] Share protection KDF: {kdf_method}")
+    print(f"[i] Shard protection KDF: {kdf_method}")
 
     recovered = []
     used_indices = set()
@@ -156,9 +156,9 @@ def main():
                 print("  (empty input, try again)")
                 continue
 
-        match = vault_core.try_match_word(word, share_records, kdf_method, kdf_params, used_indices)
+        match = vault_core.try_match_word(word, shard_records, kdf_method, kdf_params, used_indices)
         if match is None:
-            print("  [-] That codeword doesn't match any remaining share. Try again.")
+            print("  [-] That codeword doesn't match any remaining shard. Try again.")
             continue
 
         idx, x, y = match

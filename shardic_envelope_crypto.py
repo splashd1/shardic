@@ -5,18 +5,19 @@ Pubkey-envelope primitives for shardic-envelope (see
 docs/pubkey-envelope-plugin.md and docs/keycloak-credential-lookup.md --
 those docs are the design rationale; this module is the first real code).
 Purely additive: wraps/unwraps opaque byte payloads (a codeword, or a
-recovered shard) to a recipient's X25519 public key. Never touches
+recovered unsealed shard) to a recipient's X25519 public key. Never touches
 gf256_sss_prime.py's split/reconstruct math or vault_core_prime.py's
-KDF/share logic -- those stay exactly as they are.
+KDF/shard logic -- those stay exactly as they are.
 
 Construction: ephemeral X25519 ECDH + HKDF-SHA256 + AES-256-GCM (a
 standard ECIES-style hybrid encryption), using the `cryptography` library
 already required by kdf.py -- no new crypto dependency.
 
-Two of these functions (serialize_shard/deserialize_shard) aren't crypto
-at all -- they're the byte encoding for a vault_core_prime.try_match_word_prime
-result (a "shard": the prime trustee's mask, or a pool trustee's (x, y)
-point) so it can pass through wrap()/unwrap() as an opaque payload. They
+Two of these functions (serialize_unsealed_shard/deserialize_unsealed_shard)
+aren't crypto at all -- they're the byte encoding for a
+vault_core_prime.try_match_word_prime result (an "unsealed shard": the
+prime trustee's mask, or a pool trustee's (x, y) point) so it can pass
+through wrap()/unwrap() as an opaque payload. They
 live here rather than being duplicated in both the combiner and trustee
 demo apps, per the same "don't duplicate crypto-adjacent logic across
 frontends" reasoning as the rest of this project's core modules.
@@ -37,8 +38,8 @@ _HKDF_INFO = b"shardic-envelope-v1"
 _NONCE_LEN = 12  # matches vault_core.NONCE_LEN's convention
 _KEY_LEN = 32
 
-SHARD_KIND_PRIME = "prime"
-SHARD_KIND_POOL = "pool"
+UNSEALED_SHARD_KIND_PRIME = "prime"
+UNSEALED_SHARD_KIND_POOL = "pool"
 
 
 class EnvelopeError(Exception):
@@ -145,33 +146,33 @@ def unwrap(envelope: dict, recipient_private_key_raw: bytes) -> bytes:
         raise EnvelopeError("decryption failed -- wrong private key or tampered envelope") from e
 
 
-def serialize_shard(kind: str, value) -> bytes:
+def serialize_unsealed_shard(kind: str, value) -> bytes:
     """Encodes a vault_core_prime.try_match_word_prime() result as
     opaque bytes, so it can pass through wrap()/unwrap() without either
     container reimplementing matching/reconstruction logic.
       kind == "prime": b"P" + mask               (1 + 32 = 33 bytes)
       kind == "pool":  b"L" + bytes([x]) + y_bytes (1 + 1 + 32 = 34 bytes)
     """
-    if kind == SHARD_KIND_PRIME:
+    if kind == UNSEALED_SHARD_KIND_PRIME:
         return b"P" + value
-    if kind == SHARD_KIND_POOL:
+    if kind == UNSEALED_SHARD_KIND_POOL:
         x, y_bytes = value
         return b"L" + bytes([x]) + y_bytes
-    raise ValueError(f"unknown shard kind: {kind!r}")
+    raise ValueError(f"unknown unsealed shard kind: {kind!r}")
 
 
-def deserialize_shard(data: bytes) -> tuple[str, object]:
-    """Inverse of serialize_shard()."""
+def deserialize_unsealed_shard(data: bytes) -> tuple[str, object]:
+    """Inverse of serialize_unsealed_shard()."""
     if not data:
-        raise ValueError("empty shard payload")
+        raise ValueError("empty unsealed shard payload")
     tag, rest = data[0:1], data[1:]
     if tag == b"P":
-        return SHARD_KIND_PRIME, rest
+        return UNSEALED_SHARD_KIND_PRIME, rest
     if tag == b"L":
         if len(rest) < 1:
-            raise ValueError("truncated pool shard payload")
-        return SHARD_KIND_POOL, (rest[0], rest[1:])
-    raise ValueError(f"unknown shard tag: {tag!r}")
+            raise ValueError("truncated pool unsealed shard payload")
+        return UNSEALED_SHARD_KIND_POOL, (rest[0], rest[1:])
+    raise ValueError(f"unknown unsealed shard tag: {tag!r}")
 
 
 def _derive_key(shared_secret: bytes) -> bytes:
@@ -220,15 +221,15 @@ if __name__ == "__main__":
     except EnvelopeError:
         pass
 
-    # shard serialization round-trip: prime
+    # unsealed shard serialization round-trip: prime
     mask = secrets.token_bytes(32)
-    encoded = serialize_shard("prime", mask)
-    assert deserialize_shard(encoded) == ("prime", mask)
+    encoded = serialize_unsealed_shard("prime", mask)
+    assert deserialize_unsealed_shard(encoded) == ("prime", mask)
 
-    # shard serialization round-trip: pool
+    # unsealed shard serialization round-trip: pool
     y_bytes = secrets.token_bytes(32)
-    encoded = serialize_shard("pool", (7, y_bytes))
-    kind, value = deserialize_shard(encoded)
+    encoded = serialize_unsealed_shard("pool", (7, y_bytes))
+    kind, value = deserialize_unsealed_shard(encoded)
     assert kind == "pool" and value == (7, y_bytes)
 
     # load_or_create_keypair persists across calls

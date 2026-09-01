@@ -7,18 +7,18 @@ a local X25519 keypair, register the public key with the combiner, then
 poll for a pending recovery envelope.
 
 When an envelope arrives, everything happens locally and nothing but
-the final shard ever leaves this process:
+the final unsealed shard ever leaves this process:
   1. unwrap the envelope with this trustee's own private key -> the
      plaintext codeword (held in memory only, never logged or printed)
   2. immediately run the existing, UNMODIFIED
      vault_core_prime.try_match_word_prime against the vault's public
-     .krypt metadata to derive this trustee's shard (the mask, if this
+     .krypt metadata to derive this trustee's unsealed shard (the mask, if this
      is the prime trustee, or an (x, y) pool point)
-  3. wrap that shard -- not the codeword -- to the combiner's public
+  3. wrap that unsealed shard -- not the codeword -- to the combiner's public
      key (bundled in the same envelope, the "self-addressed envelope"
      pattern) and send it back
 
-The combiner never receives a codeword from any trustee, only shards.
+The combiner never receives a codeword from any trustee, only unsealed shards.
 """
 
 import base64
@@ -91,7 +91,7 @@ def _check_and_accept_invitation(combiner_base_url: str, token: str) -> None:
     """Checks for a pending ceremony invitation and immediately accepts
     it. This demo trustee has no interactive human to ask, so accepting
     on sight is the same auto-everything behavior already used for
-    registration and shard replies. A trustee that shouldn't
+    registration and unsealed shard replies. A trustee that shouldn't
     participate in a given ceremony is simulated by pausing its
     container (docker-compose pause) so it never polls to see the
     invitation in the first place -- decline and silent timeout are
@@ -170,26 +170,26 @@ def poll_and_respond_loop(
 
         if protection_mode == vault_core_prime.PROTECTION_DRBG:
             # A DRBG-direct credential is already the raw AES-256-GCM
-            # share-protection key -- no KDF, no salt, tried directly.
+            # shard-protection key -- no KDF, no salt, tried directly.
             match = vault_core_prime.try_match_key_prime(
-                credential, cached_metadata["shares"], used_indices=set()
+                credential, cached_metadata.get("shards", cached_metadata.get("shares")), used_indices=set()
             )
         else:
             codeword = credential.decode("utf-8")
             kdf_method, kdf_params = vault_core_prime.resolve_kdf(cached_metadata)
             match = vault_core_prime.try_match_word_prime(
-                codeword, cached_metadata["shares"], kdf_method, kdf_params, used_indices=set()
+                codeword, cached_metadata.get("shards", cached_metadata.get("shares")), kdf_method, kdf_params, used_indices=set()
             )
             del codeword
         del credential  # never needed again; don't let it linger in a local var
         if match is None:
-            log(f"{protection_mode} credential did not match any share record in this vault's metadata -- cannot derive a shard")
+            log(f"{protection_mode} credential did not match any shard record in this vault's metadata -- cannot derive an unsealed shard")
             time.sleep(poll_interval_s)
             continue
 
         _idx, kind, value = match
-        shard_bytes = shardic_envelope_crypto.serialize_shard(kind, value)
-        reply_envelope = shardic_envelope_crypto.wrap(shard_bytes, combiner_pub)
+        unsealed_shard_bytes = shardic_envelope_crypto.serialize_unsealed_shard(kind, value)
+        reply_envelope = shardic_envelope_crypto.wrap(unsealed_shard_bytes, combiner_pub)
 
         reply_resp = requests.post(
             f"{combiner_base_url}/trustees/shard-reply",
@@ -198,9 +198,9 @@ def poll_and_respond_loop(
             timeout=_TIMEOUT_S,
         )
         if reply_resp.status_code == 200:
-            log(f"shard submitted for session {session_id}")
+            log(f"unsealed shard submitted for session {session_id}")
         else:
-            log(f"shard submission failed: HTTP {reply_resp.status_code} {reply_resp.text}")
+            log(f"unsealed shard submission failed: HTTP {reply_resp.status_code} {reply_resp.text}")
 
         time.sleep(poll_interval_s)
 

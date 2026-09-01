@@ -329,7 +329,7 @@ class CreateTab(ttk.Frame):
                     APP_TITLE,
                     "'argon2-cffi' is not installed, so Argon2id (the stronger, "
                     "memory-hard key derivation function) isn't available.\n\n"
-                    "Share protection would fall back to PBKDF2-HMAC-SHA256, "
+                    "Shard protection would fall back to PBKDF2-HMAC-SHA256, "
                     "which is weaker against GPU/ASIC-parallel offline guessing "
                     "of your codewords.\n\n"
                     "For stronger protection, install argon2-cffi and restart "
@@ -556,7 +556,7 @@ class RecoverTab(ttk.Frame):
                 recovered, unmatched = vault_core.match_codewords(codewords, metadata)
                 if unmatched:
                     self._log_writer(
-                        f"{len(unmatched)} entered codeword(s) didn't match any share and were skipped."
+                        f"{len(unmatched)} entered codeword(s) didn't match any shard and were skipped."
                     )
                 result = vault_core.reconstruct_and_decrypt(
                     metadata, ciphertext, recovered, outdir=outdir, log=self._log_writer
@@ -852,7 +852,7 @@ class CreatePrimeTab(ttk.Frame):
                     APP_TITLE,
                     "'argon2-cffi' is not installed, so Argon2id (the stronger, "
                     "memory-hard key derivation function) isn't available.\n\n"
-                    "Share protection would fall back to PBKDF2-HMAC-SHA256, "
+                    "Shard protection would fall back to PBKDF2-HMAC-SHA256, "
                     "which is weaker against GPU/ASIC-parallel offline guessing "
                     "of your codewords.\n\n"
                     "For stronger protection, install argon2-cffi and restart "
@@ -1082,13 +1082,13 @@ class RecoverPrimeTab(ttk.Frame):
         def worker():
             try:
                 metadata, ciphertext = vault_core_prime.krypt_container.read_krypt(path)
-                mask, pool_shares, unmatched = vault_core_prime.match_codewords_prime(codewords, metadata)
+                mask, pool_shards, unmatched = vault_core_prime.match_codewords_prime(codewords, metadata)
                 if unmatched:
                     self._log_writer(
-                        f"{len(unmatched)} entered codeword(s) didn't match any share and were skipped."
+                        f"{len(unmatched)} entered codeword(s) didn't match any shard and were skipped."
                     )
                 result = vault_core_prime.reconstruct_and_decrypt_prime(
-                    metadata, ciphertext, mask, pool_shares, outdir=outdir, log=self._log_writer
+                    metadata, ciphertext, mask, pool_shards, outdir=outdir, log=self._log_writer
                 )
                 self.after(0, lambda: self._on_recover_done(result))
             except vault_core_prime.VaultError as e:

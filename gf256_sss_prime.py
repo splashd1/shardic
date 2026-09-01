@@ -12,18 +12,18 @@ split):
 
     mask          = random bytes, same length as the secret
     masked_secret = secret XOR mask
-    pool_shares   = split_secret(masked_secret, pool_threshold, pool_size)
+    pool_shards   = split_secret(masked_secret, pool_threshold, pool_size)
 
 The prime trustee's codeword protects `mask` directly -- there's no
 polynomial for the prime slot, it's an all-or-nothing pad. Recovery
-needs `mask` AND any `pool_threshold` of the pool shares:
+needs `mask` AND any `pool_threshold` of the pool shards:
 
-    masked_secret = reconstruct_secret(pool_shares)
+    masked_secret = reconstruct_secret(pool_shards)
     secret        = masked_secret XOR mask
 
-Without `mask`, no amount of pool shares (even all of them) reveals
+Without `mask`, no amount of pool shards (even all of them) reveals
 anything about `secret` -- `masked_secret` is uniformly random without
-it. Without at least `pool_threshold` pool shares, `mask` alone
+it. Without at least `pool_threshold` pool shards, `mask` alone
 reveals nothing either. That's what makes the prime trustee essential
 while leaving the pool a plain interchangeable k-of-n, with the same
 information-theoretic guarantee as the base scheme on each side of the
@@ -37,9 +37,9 @@ from gf256_sss import split_secret, reconstruct_secret
 
 def split_secret_with_prime(secret: bytes, pool_threshold: int, pool_size: int):
     """
-    Returns (mask, pool_shares):
+    Returns (mask, pool_shards):
       mask        -- bytes, same length as secret; goes to the prime trustee.
-      pool_shares -- list of (x, y_bytes) tuples as returned by
+      pool_shards -- list of (x, y_bytes) tuples as returned by
                      gf256_sss.split_secret; any pool_threshold of
                      these, together with mask, reconstruct `secret`.
     """
@@ -50,16 +50,16 @@ def split_secret_with_prime(secret: bytes, pool_threshold: int, pool_size: int):
         )
     mask = secrets.token_bytes(len(secret))
     masked_secret = bytes(a ^ b for a, b in zip(secret, mask))
-    pool_shares = split_secret(masked_secret, threshold=pool_threshold, total_shares=pool_size)
-    return mask, pool_shares
+    pool_shards = split_secret(masked_secret, threshold=pool_threshold, total_shards=pool_size)
+    return mask, pool_shards
 
 
-def reconstruct_secret_with_prime(mask: bytes, pool_shares) -> bytes:
-    """Inverse of split_secret_with_prime. `pool_shares` must contain
+def reconstruct_secret_with_prime(mask: bytes, pool_shards) -> bytes:
+    """Inverse of split_secret_with_prime. `pool_shards` must contain
     at least pool_threshold consistent (x, y_bytes) tuples."""
-    masked_secret = reconstruct_secret(pool_shares)
+    masked_secret = reconstruct_secret(pool_shards)
     if len(masked_secret) != len(mask):
-        raise ValueError("mask/pool share length mismatch")
+        raise ValueError("mask/pool shard length mismatch")
     return bytes(a ^ b for a, b in zip(masked_secret, mask))
 
 
@@ -68,14 +68,14 @@ if __name__ == "__main__":
     import itertools
 
     secret = secrets.token_bytes(32)
-    mask, pool_shares = split_secret_with_prime(secret, pool_threshold=3, pool_size=5)
+    mask, pool_shards = split_secret_with_prime(secret, pool_threshold=3, pool_size=5)
 
-    for combo in itertools.combinations(pool_shares, 3):
+    for combo in itertools.combinations(pool_shards, 3):
         assert reconstruct_secret_with_prime(mask, list(combo)) == secret
 
     # Below pool_threshold, or without the mask at all, reconstruction
     # must not silently succeed with the right answer.
-    short_combo = pool_shares[:2]
+    short_combo = pool_shards[:2]
     assert reconstruct_secret_with_prime(mask, short_combo) != secret
 
     print("gf256_sss_prime self-test passed")
