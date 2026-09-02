@@ -1,3 +1,33 @@
+# Session notes — 2026-09-02 (Claude Code: reviewed the user's v3.2 edit pass, then built out the missing whitepaper figures, docx/html twins, and a realigned v3.2 companion deck)
+
+## What happened
+
+**Review pass on `docs/shardic_white_paper.v3.2.md`** (the user's own edit pass, diffed against v3.1): produced `docs/feedback-on-v3.2.md` — a full section-by-section accuracy/grammar/readability review — and, per the user's explicit request, directly edited only the Abstract to stop referencing a Section 11 that the user had intentionally dropped from the body (confirmed via `AskUserQuestion` rather than assumed). Top finding: Figures 6.3 and 6.5 had captions in the text with no actual image — every other figure-captioned section had a real embed.
+
+**Investigated but did not resolve:** the user reported ~80 stray `shardic_white_paper.v3.2.md.XXXXXX`-style temp files in `docs/`. Could not locate any matching files via `find`/`grep` despite several patterns; proposed Ghostwriter's Qt `QSaveFile` atomic-save mechanism over the NFS-mounted `/imgs` share as a likely cause, but the user never ran the verification command asked for (`ls docs/*.md.??????`) and moved on ("I'm good"). **Still genuinely open if it recurs.**
+
+**Git housekeeping** (three separate scoped commits per the user's incrementally broadening requests): `a2407bd` (v3.2.md + feedback doc), `f224758` (all other changed/new docs — the share→shard/unsealed-shard rename propagation across documentation, plus new gf256 field-construction figures), `a229c9f` (the same rename across the 15 remaining code files). All pushed.
+
+**Built the two missing figures**: `docs/media/trustee-attested-path-chain.png` (Figure 6.3, an ordered receipt-chain diagram) and `hybrid-ai-human-policy-gates.png` (Figure 6.5, the three-tier AI/human AND-gate diagram) — matplotlib, matching the existing `gf256-*` figure style (navy/blue palette, DejaVu Sans). Generation script lives only in this session's scratchpad, not the repo. Embedded both into the whitepaper at their existing caption spots.
+
+**Regenerated docx/html twins for v3.2** — the first time any v3.x draft has had them (`SHARDIC_White_Paper_v3.2_with_figures.docx`, `shardic_white_paper32.html`), built via the reference-doc pipeline against v2.3.2's docx. Found and fixed a real, previously-undetected bug in `docs/tools/fix_docx.py`: the reference docx itself already carried 8 zip-level media parts with **no relationship pointing to them at all** — invisible to the existing "dangling-relationship" cleanup, which only strips parts that have a rels entry but aren't referenced. Added a second pass (`strip_relless_media`) that catches these too. Verified via table-count/media-count checks and a rendered-PDF visual check (borders intact, both figures present).
+
+**Rebuilt `docs/shardic_deck_v3_2.pptx`** (36 slides, up from the old `shardic_deck_v2_2.pptx`'s 30) to match v3.2's actual structure and thesis, per the user's explicit "full realignment" choice over lighter options. Used python-pptx directly (add_slide + shape API) rather than raw OOXML surgery — much simpler than the skill's documented XML-surgery workflow once the visual system (colors, card/icon patterns, fonts) was catalogued from the existing deck. Changes: global `share`→`shard` sweep; section-number relabeling throughout, including several inline cross-references that the old §5⇄§6 (Notional Missions ⇄ Security Discussion) swap would otherwise have left silently wrong; new slides for §1.5–1.6 (capability stack), §3.3 (four pluggable SEK sources), §5.5 (NEAT framework), §10 (funding roadmap), and — the paper's actual new thesis — §6.4 (human-AI mutual oversight) as a dedicated headline slide flanked by newly-split-out §6.3/§6.5 Vignette C/D slides carrying the two new figures. Hit and fixed two real bugs along the way: a python-pptx partname-collision (`slide30.xml` written twice) caused by deleting a slide before appending new ones — fixed by reordering to append-then-delete; and a badge text overflowing its fixed-width box after a section-number edit — caught via a rendered-PDF visual check across all 36 slides, not just structural validation.
+
+All of the above landed in one commit, `6b1016e`, pushed to `origin/main`.
+
+## State at end
+
+Working tree clean, fully in sync with `origin/main`. All explicitly requested work this session is complete and pushed.
+
+## Possibly worth following up
+
+- The ~80 stray temp-files report is still unresolved — the user dropped the thread rather than confirming it was a non-issue. Worth a quick check next time `docs/` temp files come up again.
+- `docs/shardic_white_paper.v3.md`, `v3.1.md`, and `v3.1jd.md` still have no docx/html twins — only v2.x and now v3.2 do. Not requested; flagging in case the user wants the whole v3 lineage covered eventually.
+- The `fix_docx.py` rel-less-media fix is retroactive-safe (it re-scans the whole package) — worth running once against the existing v2.x docx files if anyone wants to shrink them, though nobody's asked.
+
+---
+
 # Session notes — 2026-08-29 (Claude Code: drafted whitepaper v3 — generalized "shardic encryption key" terminology, AI mutual-oversight thesis, RAIN framework, then a full structural reorg per user feedback)
 
 ## What happened
