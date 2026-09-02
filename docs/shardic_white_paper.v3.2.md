@@ -607,6 +607,8 @@ Notional design. Each designated trustee node validates a transaction-bound requ
 
 Security boundary. A signed receipt establishes that its signer participated in the protocol; it does not establish that a human examined the payload, that the packet physically traversed a particular wire, or that a compromised trustee behaved honestly. These assurances depend on the authenticated node implementation, key custody, attestation where available, independent logging, and the deployment’s threat model. Use end-to-end encryption and standard network controls in addition to this pattern.
 
+![](./media/trustee-attested-path-chain.png){width="5.2in" height="3.14in"}
+
 Figure 6.3. Trustee-attested network-path pattern. An ordered, transaction-bound receipt chain records authenticated participation by designated trustees. The receiver verifies identity, predecessor commitment, freshness, route policy, and endpoint binding before release. A missing or invalid receipt halts the ceremony.
 
 Lifecycle. An approver signs the transaction policy and content commitment. The origin creates a fresh ceremony-bound request. Each trustee verifies the prior receipt and policy, then either adds a signed receipt or withholds it. The endpoint verifies the chain and its own local binding before requesting release. All denials and successful releases are logged with redacted, correlation-safe metadata. Secret material is zeroized after use.
@@ -638,6 +640,8 @@ Notional design. The objective and subjective conditions are separate, explicit 
 - A distinct human trustee ceremony requires its own threshold of authenticated human contributions. The release service verifies both gates server-side before it reconstructs or releases the SPAC value.
 
 This separation is important: an ordinary single D-of-T Shamir split does not encode class-specific requirements such as ‘all three AI checks and any two humans.’ Further nuance for conditions can be abstracted to a cryptographic reconstruction flow for enforcement, if so desired. One can implement such a policy with separate cryptographic gates or a vetted access-structure construction, then compose them with an explicit AND rule. The objective measures can thus be cryptographically mapped to separate agents as needed for objective enforcement. Likewise the subjective evaluation can be distributed as desired to one or more human trustees.
+
+![](./media/hybrid-ai-human-policy-gates.png){width="5.2in" height="4.50in"}
 
 Figure 6.5. Hybrid human-and-AI policy gates. A bounded AI evaluator attests only when allow-listed objective criteria are met from authenticated evidence; an independent human trustee ceremony supplies situational judgment. The release service enforces an explicit AND rule across both gates and all server-side checks.
 
