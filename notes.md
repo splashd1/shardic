@@ -1,3 +1,31 @@
+# Session notes — 2026-09-11 (Claude Code: full repo cleanup — archived superseded whitepaper/deck versions, untracked stray build binaries, expanded README's file list, then packaged and delivered a zip of the repo)
+
+## What happened
+
+**Repo cleanup** (`f547531` was HEAD going in), scoped via `AskUserQuestion` up front — archive (not delete) superseded doc versions, keep git history as-is (no rewrite/squash), and check for the prior session's unresolved stray-temp-file report:
+
+- No stray temp files found anywhere in the repo (that ~80-file report from 2026-09-02 didn't reproduce — likely resolved or a one-off).
+- **`783e12e`**: moved 31 superseded files into new `docs/archive/` via `git mv` — every whitepaper draft v1.2 through v3.1jd, an orphaned v2.3 docx, a duplicate v2.0 fork-point copy, and 7 old deck/presentation files. `docs/` top level now shows only the live v3.2 set plus standing reference docs. Also fixed three stale cross-references that still pointed at now-archived files (README's doc list, `shardic-cryptographic-path.md`/`.html`'s Appendix A pointer, `embedment-manual.md`'s narrative-doc pointer) to point at v3.2.
+- **`cbf738d`**: found `VaultTool-x86_64.AppImage`/`VaultToolGUI-x86_64.AppImage` (~43MB) committed at the repo's very first commit and never touched since — not the real build output (that goes to the already-gitignored `dist/`). Untracked both, added `*.AppImage` to `.gitignore`.
+- **`b91c615`**: regenerated `docs/shardic-cryptographic-path.docx` from the corrected `.md` (plain pandoc pipeline, not the reference-doc one — this doc isn't part of the whitepaper trio). Verified via word-count/section-header comparison against the pre-regen render.
+- **`3a3d265`**: expanded README's Files section — it was missing `shardic_envelope_crypto.py` (the actual shardic-envelope implementation), the current slide deck, 9 standalone design docs, the new `docs/archive/`/`docs/media/`/`docs/tools/` dirs, and everything outside `docs/` entirely (`demo/`, `graphics/`, `CLAUDE.md`, `notes.md` itself).
+
+All four commits pushed to `origin/main` individually, each confirmed with the user before pushing. One mid-session slip: a `git reset --soft` + restage to split the docx-regen and README commits apart initially re-merged them by accident (twice) because the soft reset re-staged both files together — caught by checking `git show --stat` after each commit rather than trusting the commit succeeded silently, fixed before anything was pushed.
+
+**Zip delivery**: user asked to email the whole repo. Checked sizes first — git-tracked files alone are 14MB (~10MB zipped), `.git` history adds another 41MB. Asked which scope; user chose tracked-files-only. Built via `git archive --format=zip -o ... HEAD` (respects `.gitignore` automatically — no need to manually exclude `__pycache__`/build binaries). Delivered via `SendUserFile`, then per follow-up requests: copied to `~/shardic.zip`, and deleted the scratchpad copy.
+
+## State at end
+
+Working tree clean, `origin/main` fully in sync (HEAD `3a3d265`). `~/shardic.zip` (10MB) is on disk for the user to attach to an email; no copy remains in the session scratchpad.
+
+## Possibly worth following up
+
+- `shardic-cryptographic-path.docx` was regenerated via plain pandoc, so it now uses default pandoc styling rather than whatever styled the original — cosmetic only, content verified intact, but flagging in case the visual diff matters to the user.
+- The prior session's stray-temp-file report is now confirmed non-reproducing — probably safe to consider closed unless it recurs.
+- The 2026-09-02 note about `v3.md`/`v3.1.md`/`v3.1jd.md` having no docx/html twins is now moot — those drafts are archived, not live.
+
+---
+
 # Session notes — 2026-09-02 (Claude Code: reviewed the user's v3.2 edit pass, then built out the missing whitepaper figures, docx/html twins, and a realigned v3.2 companion deck)
 
 ## What happened
