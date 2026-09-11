@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 dist/
+*.AppImage
 demo/.env
 demo/media/*.mp4
 demo/media/*.gif
