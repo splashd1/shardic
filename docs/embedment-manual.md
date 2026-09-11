@@ -117,7 +117,7 @@ that design rather than fixing one wire format up front.
 Full depth: `README.md` (base scheme, use cases, build/run),
 `CLAUDE.md` (module map, don't-re-break-this invariants),
 `spac-concept.md` (SPAC reframe, client module, Fielded Prime Element,
-RTO tables), `shardic_white_paper.v2.0.md` (external-facing narrative
+RTO tables), `shardic_white_paper.v3.2.md` (external-facing narrative
 across all three layers).
 
 ## The full solution space, as a fork tree
